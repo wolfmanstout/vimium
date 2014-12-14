@@ -560,7 +560,8 @@ window.enterInsertMode = (target) ->
 # leave insert mode when the user presses <ESC>.
 # Note. This returns the truthiness of target, which is required by isInsertMode.
 #
-enterInsertModeWithoutShowingIndicator = (target) -> insertModeLock = target
+# Modified, removed: insertModeLock = target
+enterInsertModeWithoutShowingIndicator = (target) ->
 
 exitInsertMode = (target) ->
   if (target == undefined || insertModeLock == target)
