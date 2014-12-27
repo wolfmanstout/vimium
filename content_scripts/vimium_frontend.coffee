@@ -526,7 +526,7 @@ refreshCompletionKeys = (response) ->
     chrome.runtime.sendMessage({ handler: "getCompletionKeys" }, refreshCompletionKeys)
 
 isValidFirstKey = (keyChar) ->
-  validFirstKeys[keyChar] || /^[1-9]/.test(keyChar)
+  validFirstKeys[keyChar] # || /^[1-9]/.test(keyChar)
 
 onFocusCapturePhase = (event) ->
   if (isFocusable(event.target) && !findMode)

@@ -493,9 +493,11 @@ generateCompletionKeys = (keysToCheck) ->
   completionKeys
 
 splitKeyQueue = (queue) ->
-  match = /([1-9][0-9]*)?(.*)/.exec(queue)
-  count = parseInt(match[1], 10)
-  command = match[2]
+  # match = /([1-9][0-9]*)?(.*)/.exec(queue)
+  # count = parseInt(match[1], 10)
+  # command = match[2]
+  count = 1
+  command = String(queue)
 
   { count: count, command: command }
 
