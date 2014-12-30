@@ -62,8 +62,16 @@ root.Settings = Settings =
   defaults:
     scrollStepSize: 60
     smoothScroll: true
-    keyMappings: "# Insert your preferred key mappings here."
-    linkHintCharacters: "sadfjklewcmpgh"
+    keyMappings:
+      """
+      # Insert your preferred key mappings here.
+      unmapAll
+      map <c-,> LinkHints.activateMode
+      map <c-.> LinkHints.activateModeToOpenInNewTab
+      map <c-;> Vomnibar.activateBookmarks
+      map <c-'> Vomnibar.activateBookmarksInNewTab
+      """
+    linkHintCharacters: "12345689"
     linkHintNumbers: "0123456789"
     filterLinkHints: false
     hideHud: false
@@ -89,8 +97,6 @@ root.Settings = Settings =
     # Default exclusion rules.
     exclusionRules:
       [
-        # Disable Vimium on Gmail.
-        { pattern: "http*://mail.google.com/*", passKeys: "" }
       ]
 
     # NOTE: If a page contains both a single angle-bracket link and a double angle-bracket link, then in
