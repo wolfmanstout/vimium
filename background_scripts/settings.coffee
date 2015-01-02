@@ -62,15 +62,7 @@ root.Settings = Settings =
   defaults:
     scrollStepSize: 60
     smoothScroll: true
-    keyMappings:
-      """
-      # Insert your preferred key mappings here.
-      unmapAll
-      map <c-,> LinkHints.activateMode
-      map <c-.> LinkHints.activateModeToOpenInNewTab
-      map <c-;> Vomnibar.activateBookmarks
-      map <c-'> Vomnibar.activateBookmarksInNewTab
-      """
+    keyMappings: "# Insert your preferred key mappings here."
     linkHintCharacters: "12345689"
     linkHintNumbers: "0123456789"
     filterLinkHints: false

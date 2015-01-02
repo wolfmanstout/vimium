@@ -177,81 +177,12 @@ Commands =
     "closeOtherTabs"]
 
 defaultKeyMappings =
-  "?": "showHelp"
-  "j": "scrollDown"
-  "k": "scrollUp"
-  "h": "scrollLeft"
-  "l": "scrollRight"
-  "gg": "scrollToTop"
-  "G": "scrollToBottom"
-  "zH": "scrollToLeft"
-  "zL": "scrollToRight"
-  "<c-e>": "scrollDown"
-  "<c-y>": "scrollUp"
-
-  "d": "scrollPageDown"
-  "u": "scrollPageUp"
-  "r": "reload"
-  "gs": "toggleViewSource"
-
-  "i": "enterInsertMode"
-
-  "H": "goBack"
-  "L": "goForward"
-  "gu": "goUp"
-  "gU": "goToRoot"
-
-  "gi": "focusInput"
-
-  "f":     "LinkHints.activateMode"
-  "F":     "LinkHints.activateModeToOpenInNewTab"
+  "<c-,>":     "LinkHints.activateMode"
+  "<c-.>":     "LinkHints.activateModeToOpenInNewForegroundTab"
   "<a-f>": "LinkHints.activateModeWithQueue"
-
-  "/": "enterFindMode"
-  "n": "performFind"
-  "N": "performBackwardsFind"
-
-  "[[": "goPrevious"
-  "]]": "goNext"
-
-  "yy": "copyCurrentUrl"
-  "yf": "LinkHints.activateModeToCopyLinkUrl"
-
-  "p": "openCopiedUrlInCurrentTab"
-  "P": "openCopiedUrlInNewTab"
-
-  "K": "nextTab"
-  "J": "previousTab"
-  "gt": "nextTab"
-  "gT": "previousTab"
-  "<<": "moveTabLeft"
-  ">>": "moveTabRight"
-  "g0": "firstTab"
-  "g$": "lastTab"
-
-  "W": "moveTabToNewWindow"
-  "t": "createTab"
-  "yt": "duplicateTab"
-  "x": "removeTab"
-  "X": "restoreTab"
-
-  "<a-p>": "togglePinTab"
-
-  "o": "Vomnibar.activate"
-  "O": "Vomnibar.activateInNewTab"
-
-  "T": "Vomnibar.activateTabSelection"
-
-  "b": "Vomnibar.activateBookmarks"
-  "B": "Vomnibar.activateBookmarksInNewTab"
-
-  "ge": "Vomnibar.activateEditUrl"
-  "gE": "Vomnibar.activateEditUrlInNewTab"
-
-  "gf": "nextFrame"
-
-  "m": "Marks.activateCreateMode"
-  "`": "Marks.activateGotoMode"
+  "<c-[>": "nextFrame"
+  "<c-;>": "Vomnibar.activateBookmarks"
+  "<c-'>": "Vomnibar.activateBookmarksInNewTab"
 
 
 # This is a mapping of: commandIdentifier => [description, options].
