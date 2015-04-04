@@ -33,7 +33,7 @@ root.Settings = Settings =
       root.refreshCompletionKeysAfterMappingSave()
 
     searchEngines: (value) ->
-      root.Settings.parseSearchEngines value
+      root.SearchEngineCompleter.parseSearchEngines value
 
     exclusionRules: (value) ->
       root.Exclusions.postUpdateHook value
@@ -41,21 +41,6 @@ root.Settings = Settings =
   # postUpdateHooks convenience wrapper
   performPostUpdateHook: (key, value) ->
     @postUpdateHooks[key] value if @postUpdateHooks[key]
-
-  # Here we have our functions that parse the search engines
-  # this is a map that we use to store our search engines for use.
-  searchEnginesMap: {}
-
-  # this parses the search engines settings and clears the old searchEngines and sets the new one
-  parseSearchEngines: (searchEnginesText) ->
-    @searchEnginesMap = {}
-    # find the split pairs by first splitting by line then splitting on the first `: `
-    split_pairs = ( pair.split( /: (.+)/, 2) for pair in searchEnginesText.split( /\n/ ) when pair[0] != "#" )
-    @searchEnginesMap[a[0]] = a[1] for a in split_pairs
-    @searchEnginesMap
-  getSearchEngines: ->
-    this.parseSearchEngines(@get("searchEngines") || "") if Object.keys(@searchEnginesMap).length == 0
-    @searchEnginesMap
 
   # options.coffee and options.html only handle booleans and strings; therefore all defaults must be booleans
   # or strings
@@ -103,8 +88,9 @@ root.Settings = Settings =
     # default/fall back search engine
     searchUrl: "http://www.google.com/search?q="
     # put in an example search engine
-    searchEngines: "w: http://www.wikipedia.org/w/index.php?title=Special:Search&search=%s"
+    searchEngines: "w: http://www.wikipedia.org/w/index.php?title=Special:Search&search=%s wikipedia"
     newTabUrl: "chrome://newtab"
+    grabBackFocus: false
 
     settingsVersion: Utils.getCurrentVersion()
 
@@ -113,3 +99,12 @@ root.Settings = Settings =
 if Utils.compareVersions("1.42", Settings.get("settingsVersion")) != -1
   Settings.set("scrollStepSize", parseFloat Settings.get("scrollStepSize"))
 Settings.set("settingsVersion", Utils.getCurrentVersion())
+
+# Migration (after 1.49, 2015/2/1).
+# Legacy setting: findModeRawQuery (a string).
+# New setting: findModeRawQueryList (a list of strings), now stored in chrome.storage.local (not localStorage).
+chrome.storage.local.get "findModeRawQueryList", (items) ->
+  unless chrome.runtime.lastError or items.findModeRawQueryList
+    rawQuery = Settings.get "findModeRawQuery"
+    chrome.storage.local.set findModeRawQueryList: (if rawQuery then [ rawQuery ] else [])
+

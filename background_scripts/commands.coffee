@@ -58,7 +58,7 @@ Commands =
 
     for line in lines
       continue if (line[0] == "\"" || line[0] == "#")
-      splitLine = line.split(/\s+/)
+      splitLine = line.replace(/\s+$/, "").split(/\s+/)
 
       lineCommand = splitLine[0]
 
@@ -111,6 +111,9 @@ Commands =
       "goUp",
       "goToRoot",
       "enterInsertMode",
+      "enterVisualMode",
+      "enterVisualLineMode",
+      # "enterEditMode",
       "focusInput",
       "LinkHints.activateMode",
       "LinkHints.activateModeToOpenInNewTab",
@@ -214,6 +217,9 @@ commandDescriptions =
   openCopiedUrlInNewTab: ["Open the clipboard's URL in a new tab", { background: true, repeatLimit: 20 }]
 
   enterInsertMode: ["Enter insert mode", { noRepeat: true }]
+  enterVisualMode: ["Enter visual mode (beta feature)", { noRepeat: true }]
+  enterVisualLineMode: ["Enter visual line mode (beta feature)", { noRepeat: true }]
+  # enterEditMode: ["Enter vim-like edit mode (not yet implemented)", { noRepeat: true }]
 
   focusInput: ["Focus the first text box on the page. Cycle between them using tab",
     { passCountToFunction: true }]

@@ -5,6 +5,10 @@
 activatedElement = null
 
 # Return 0, -1 or 1: the sign of the argument.
+# NOTE(smblott; 2014/12/17) We would like to use Math.sign().  However, according to this site
+# (https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sign) Math.sign() was
+# only introduced in Chrome 38.  This caused problems in R1.48 for users with old Chrome installations.  We
+# can replace this with Math.sign() at some point.
 getSign = (val) ->
   if not val
     0
@@ -63,7 +67,7 @@ shouldScroll = (element, direction) ->
 # Instead, we scroll the element by 1 or -1 and see if it moved (then put it back).  :factor is the factor by
 # which :scrollBy and :scrollTo will later scale the scroll amount. :factor can be negative, so we need it
 # here in order to decide whether we should test a forward scroll or a backward scroll.
-# Bug verified in Chrome 38.0.2125.104.
+# Bug last verified in Chrome 38.0.2125.104.
 doesScroll = (element, direction, amount, factor) ->
   # amount is treated as a relative amount, which is correct for relative scrolls. For absolute scrolls (only
   # gg, G, and friends), amount can be either a string ("max" or "viewSize") or zero. In the former case,
@@ -79,6 +83,19 @@ findScrollableElement = (element, direction, amount, factor) ->
     not (doesScroll(element, direction, amount, factor) and shouldScroll(element, direction))
       element = element.parentElement || document.body
   element
+
+# On some pages, document.body is not scrollable.  Here, we search the document for the largest visible
+# element which does scroll vertically. This is used to initialize activatedElement. See #1358.
+firstScrollableElement = (element=document.body) ->
+  if doesScroll(element, "y", 1, 1) or doesScroll(element, "y", -1, 1)
+    element
+  else
+    children = ({element: child, rect: DomUtils.getVisibleClientRect(child)} for child in element.children)
+    children = children.filter (child) -> child.rect # Filter out non-visible elements.
+    children.map (child) -> child.area = child.rect.width * child.rect.height
+    for child in children.sort((a,b) -> b.area - a.area) # Largest to smallest by visible area.
+      return ele if ele = firstScrollableElement child.element
+    null
 
 checkVisibility = (element) ->
   # If the activated element has been scrolled completely offscreen, then subsequent changes in its scroll
@@ -107,12 +124,15 @@ CoreScroller =
     @keyIsDown = false
 
     handlerStack.push
+      _name: 'scroller/track-key-status'
       keydown: (event) =>
-        @keyIsDown = true
-        @lastEvent = event
+        handlerStack.alwaysContinueBubbling =>
+          @keyIsDown = true
+          @lastEvent = event
       keyup: =>
-        @keyIsDown = false
-        @time += 1
+        handlerStack.alwaysContinueBubbling =>
+          @keyIsDown = false
+          @time += 1
 
   # Return true if CoreScroller would not initiate a new scroll right now.
   wouldNotInitiateScroll: -> @lastEvent?.repeat and @settings.get "smoothScroll"
@@ -126,7 +146,7 @@ CoreScroller =
   calibrationBoundary: 150 # Boundary between scrolls which are considered too slow, or too fast.
 
   # Scroll element by a relative amount (a number) in some direction.
-  scroll: (element, direction, amount) ->
+  scroll: (element, direction, amount, continuous = true) ->
     return unless amount
 
     unless @settings.get "smoothScroll"
@@ -182,13 +202,19 @@ CoreScroller =
         # We're done.
         checkVisibility element
 
+    # If we've been asked not to be continuous, then we advance time, so the myKeyIsStillDown test always
+    # fails.
+    ++@time unless continuous
+
     # Launch animator.
     requestAnimationFrame animate
 
-# Scroller contains the two main scroll functions (scrollBy and scrollTo) which are exported to clients.
+# Scroller contains the two main scroll functions which are used by clients.
 Scroller =
   init: (frontendSettings) ->
-    handlerStack.push DOMActivate: -> activatedElement = event.target
+    handlerStack.push
+      _name: 'scroller/active-element'
+      DOMActivate: (event) -> handlerStack.alwaysContinueBubbling -> activatedElement = event.target
     CoreScroller.init frontendSettings
 
   # scroll the active element in :direction by :amount * :factor.
@@ -202,7 +228,7 @@ Scroller =
         window.scrollBy(0, amount)
       return
 
-    activatedElement ||= document.body
+    activatedElement ||= (document.body and firstScrollableElement()) or document.body
     return unless activatedElement
 
     # Avoid the expensive scroll calculation if it will not be used.  This reduces costs during smooth,
@@ -213,12 +239,59 @@ Scroller =
       CoreScroller.scroll element, direction, elementAmount
 
   scrollTo: (direction, pos) ->
-    return unless document.body or activatedElement
-    activatedElement ||= document.body
+    activatedElement ||= (document.body and firstScrollableElement()) or document.body
+    return unless activatedElement
 
     element = findScrollableElement activatedElement, direction, pos, 1
     amount = getDimension(element,direction,pos) - element[scrollProperties[direction].axisName]
     CoreScroller.scroll element, direction, amount
+
+  # Scroll the top, bottom, left and right of element into view.  The is used by visual mode to ensure the
+  # focus remains visible.
+  scrollIntoView: (element) ->
+    activatedElement ||= document.body and firstScrollableElement()
+    rect = element. getClientRects()?[0]
+    if rect?
+      # Scroll y axis.
+      if rect.top < 0
+        amount = rect.top - 10
+        element = findScrollableElement element, "y", amount, 1
+        CoreScroller.scroll element, "y", amount, false
+      else if window.innerHeight < rect.bottom
+        amount = rect.bottom - window.innerHeight + 10
+        element = findScrollableElement element, "y", amount, 1
+        CoreScroller.scroll element, "y", amount, false
+
+      # Scroll x axis.
+      if rect.left < 0
+        amount = rect.left - 10
+        element = findScrollableElement element, "x", amount, 1
+        CoreScroller.scroll element, "x", amount, false
+      else if window.innerWidth < rect.right
+        amount = rect.right - window.innerWidth + 10
+        element = findScrollableElement element, "x", amount, 1
+        CoreScroller.scroll element, "x", amount, false
+
+  # Scroll element to position top, left.  This is used by edit mode to ensure that the caret remains visible
+  # in text inputs (not contentEditable).
+  scrollToPosition: (element, top, left) ->
+    activatedElement ||= document.body and firstScrollableElement()
+
+    # Scroll down, "y".
+    amount = top + 20 - (element.clientHeight + element.scrollTop)
+    CoreScroller.scroll element, "y", amount, false if 0 < amount
+
+    # Scroll up, "y".
+    amount = top - (element.scrollTop) - 5
+    CoreScroller.scroll element, "y", amount, false if amount < 0
+
+    # Scroll down, "x".
+    amount = left + 20 - (element.clientWidth + element.scrollLeft)
+    CoreScroller.scroll element, "x", amount, false if 0 < amount
+
+    # Scroll up, "x".
+    amount = left - (element.scrollLeft) - 5
+    CoreScroller.scroll element, "x", amount, false if amount < 0
 
 root = exports ? window
 root.Scroller = Scroller

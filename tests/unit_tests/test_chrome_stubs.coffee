@@ -16,6 +16,8 @@ exports.chrome =
       addListener: () -> true
     onMessage:
       addListener: () -> true
+    onInstalled:
+      addListener: ->
 
   tabs:
     onSelectionChanged:
@@ -41,7 +43,15 @@ exports.chrome =
       addListener: () -> true
     getAll: () -> true
 
+  browserAction:
+    setBadgeBackgroundColor: ->
   storage:
+    # chrome.storage.local
+    local:
+      get: ->
+      set: ->
+      remove: ->
+
     # chrome.storage.onChanged
     onChanged:
       addListener: (func) -> @func = func
