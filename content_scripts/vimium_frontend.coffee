@@ -332,7 +332,7 @@ extend window,
   enterInsertMode: ->
     # If a focusable element receives the focus, then we exit and leave the permanently-installed insert-mode
     # instance to take over.
-    # new InsertMode global: true, exitOnFocus: true
+    new InsertMode global: true, exitOnFocus: true
 
   enterVisualMode: ->
     new VisualMode()

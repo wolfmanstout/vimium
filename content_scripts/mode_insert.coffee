@@ -57,6 +57,7 @@ class InsertMode extends Mode
     InsertMode.permanentInstance = @ if @permanent
 
   isActive: (event) ->
+    return false
     return false if event == InsertMode.suppressedEvent
     return true if @insertModeLock or @global
     # Some sites (e.g. inbox.google.com) change the contentEditable property on the fly (see #1245); and
