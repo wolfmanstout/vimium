@@ -2,9 +2,7 @@ require "./test_helper.js"
 extend global, require "./test_chrome_stubs.js"
 extend(global, require "../../lib/utils.js")
 Utils.getCurrentVersion = -> '1.43'
-extend(global, require "../../background_scripts/sync.js")
-extend(global, require "../../background_scripts/settings.js")
-Sync.init()
+extend(global, require "../../lib/settings.js")
 
 context "isUrl",
   should "accept valid URLs", ->
@@ -42,11 +40,22 @@ context "convertToUrl",
     assert.equal "http://127.0.0.1:8080", Utils.convertToUrl("127.0.0.1:8080")
     assert.equal "http://[::]:8080", Utils.convertToUrl("[::]:8080")
     assert.equal "view-source:    0.0.0.0", Utils.convertToUrl("view-source:    0.0.0.0")
+    assert.equal "javascript:alert('25 % 20 * 25 ');", Utils.convertToUrl "javascript:alert('25 % 20 * 25%20');"
 
   should "convert non-URL terms into search queries", ->
-    assert.equal "http://www.google.com/search?q=google", Utils.convertToUrl("google")
-    assert.equal "http://www.google.com/search?q=go+ogle.com", Utils.convertToUrl("go ogle.com")
-    assert.equal "http://www.google.com/search?q=%40twitter", Utils.convertToUrl("@twitter")
+    assert.equal "https://www.google.com/search?q=google", Utils.convertToUrl("google")
+    assert.equal "https://www.google.com/search?q=go+ogle.com", Utils.convertToUrl("go ogle.com")
+    assert.equal "https://www.google.com/search?q=%40twitter", Utils.convertToUrl("@twitter")
+
+context "extractQuery",
+  should "extract queries from search URLs", ->
+    assert.equal "bbc sport 1", Utils.extractQuery "https://www.google.ie/search?q=%s", "https://www.google.ie/search?q=bbc+sport+1"
+    assert.equal "bbc sport 2", Utils.extractQuery "http://www.google.ie/search?q=%s", "https://www.google.ie/search?q=bbc+sport+2"
+    assert.equal "bbc sport 3", Utils.extractQuery "https://www.google.ie/search?q=%s", "http://www.google.ie/search?q=bbc+sport+3"
+    assert.equal "bbc sport 4", Utils.extractQuery "https://www.google.ie/search?q=%s", "http://www.google.ie/search?q=bbc+sport+4&blah"
+
+  should "extract not queries from incorrect search URLs", ->
+    assert.isFalse Utils.extractQuery "https://www.google.ie/search?q=%s&foo=bar", "https://www.google.ie/search?q=bbc+sport"
 
 context "hasChromePrefix",
   should "detect chrome prefixes of URLs", ->
@@ -61,6 +70,17 @@ context "hasChromePrefix",
     assert.isFalse Utils.hasChromePrefix "chrome-extension"
     assert.isFalse Utils.hasChromePrefix "data"
     assert.isFalse Utils.hasChromePrefix "data :foobar"
+
+context "hasJavascriptPrefix",
+  should "detect javascript: URLs", ->
+    assert.isTrue Utils.hasJavascriptPrefix "javascript:foobar"
+    assert.isFalse Utils.hasJavascriptPrefix "http:foobar"
+
+context "decodeURIByParts",
+  should "decode javascript: URLs", ->
+    assert.equal "foobar", Utils.decodeURIByParts "foobar"
+    assert.equal " ", Utils.decodeURIByParts "%20"
+    assert.equal "25 % 20 25 ", Utils.decodeURIByParts "25 % 20 25%20"
 
 context "isUrl",
   should "identify URLs as URLs", ->
@@ -82,3 +102,73 @@ context "compare versions",
     assert.equal -1, Utils.compareVersions("1.40.1", "1.40.2")
     assert.equal -1, Utils.compareVersions("1.40.1", "1.41")
     assert.equal 1, Utils.compareVersions("1.41", "1.40")
+
+context "makeIdempotent",
+  setup ->
+    @count = 0
+    @func = Utils.makeIdempotent (n = 1) => @count += n
+
+  should "call a function once", ->
+    @func()
+    assert.equal 1, @count
+
+  should "call a function once with an argument", ->
+    @func 2
+    assert.equal 2, @count
+
+  should "not call a function a second time", ->
+    @func()
+    assert.equal 1, @count
+
+  should "not call a function a second time", ->
+    @func()
+    assert.equal 1, @count
+    @func()
+    assert.equal 1, @count
+
+context "distinctCharacters",
+  should "eliminate duplicate characters", ->
+    assert.equal "abc", Utils.distinctCharacters "bbabaabbacabbbab"
+
+context "invokeCommandString",
+  setup ->
+    @beenCalled = false
+    window.singleComponentCommand = => @beenCalled = true
+    window.twoComponentCommand = command: window.singleComponentCommand
+
+  tearDown ->
+    delete window.singleComponentCommand
+    delete window.twoComponentCommand
+
+  should "invoke single-component commands", ->
+    assert.isFalse @beenCalled
+    Utils.invokeCommandString "singleComponentCommand"
+    assert.isTrue @beenCalled
+
+  should "invoke multi-component commands", ->
+    assert.isFalse @beenCalled
+    Utils.invokeCommandString "twoComponentCommand.command"
+    assert.isTrue @beenCalled
+
+context "escapeRegexSpecialCharacters",
+  should "escape regexp special characters", ->
+    str = "-[]/{}()*+?.^$|"
+    regexp = new RegExp Utils.escapeRegexSpecialCharacters str
+    assert.isTrue regexp.test str
+
+context "extractQuery",
+  should "extract the query terms from a URL", ->
+    url = "https://www.google.ie/search?q=star+wars&foo&bar"
+    searchUrl = "https://www.google.ie/search?q=%s"
+    assert.equal "star wars", Utils.extractQuery searchUrl, url
+
+  should "require trailing URL components", ->
+    url = "https://www.google.ie/search?q=star+wars&foo&bar"
+    searchUrl = "https://www.google.ie/search?q=%s&foobar=x"
+    assert.equal null, Utils.extractQuery searchUrl, url
+
+  should "accept trailing URL components", ->
+    url = "https://www.google.ie/search?q=star+wars&foo&bar&foobar=x"
+    searchUrl = "https://www.google.ie/search?q=%s&foobar=x"
+    assert.equal "star wars", Utils.extractQuery searchUrl, url
+

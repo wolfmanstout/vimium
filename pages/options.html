@@ -18,7 +18,7 @@
                 Wholly or partially disable Vimium.  "Patterns" are URL regular expressions;
                 additionally, "*" matches any zero or more characters.
                 <br/><br/>
-                If "Keys" is left empty, then vimium is wholly disabled.
+                If "Keys" is left empty, then Vimium is wholly disabled.
                 Otherwise, just the listed keys are disabled (they are passed through).
               </div>
             </div>
@@ -43,7 +43,7 @@ unmap j
 unmapAll
 " this is a comment
 # this is also a comment</pre>
-                <a href="#" id="showCommands">Show available commands.</a>
+                <a href="#" id="showCommands">Show available commands</a>.
               </div>
             </div>
             <textarea id="keyMappings" type="text"></textarea>
@@ -60,16 +60,17 @@ a: http://a.com/?q=%s
 b: http://b.com/?q=%s description
 " this is a comment
 # this is also a comment</pre>
-                  %s is replaced with the search terms.
+                  %s is replaced with the search terms. <br/>
+                  For search completion, see <a href="completion_engines.html" target="_blank">here</a>.
                 </div>
               </div>
               <textarea id="searchEngines"></textarea>
           </td>
         </tr>
-        <tr>
-           <td colspan="2"><a href="#" id="advancedOptionsLink">Show advanced options&hellip;</a></td>
-        </tr>
         <tbody id='advancedOptions'>
+          <tr>
+            <td colspan="2"><header>Advanced Options</header></td>
+          </tr>
           <tr>
             <td class="caption">Scroll step size</td>
             <td>
@@ -81,7 +82,7 @@ b: http://b.com/?q=%s description
               <input id="scrollStepSize" type="number" />px
             </td>
           </tr>
-          <tr>
+          <tr id="linkHintCharactersContainer">
             <td class="caption">Characters used<br/> for link hints</td>
             <td verticalAlign="top">
                 <div class="help">
@@ -93,7 +94,7 @@ b: http://b.com/?q=%s description
                 <div class="nonEmptyTextOption">
             </td>
           </tr>
-          <tr>
+          <tr id="linkHintNumbersContainer">
             <td class="caption">Numbers used<br/> for link hints</td>
             <td verticalAlign="top">
                 <div class="help">
@@ -119,12 +120,27 @@ b: http://b.com/?q=%s description
             <td verticalAlign="top" class="booleanOption">
               <div class="help">
                 <div class="example">
-                  In link-hint mode, this option lets you also select a link by typing its text.
+                  In link-hint mode, this option lets you select a link by typing its text.
                 </div>
               </div>
               <label>
                 <input id="filterLinkHints" type="checkbox"/>
                 Use the link's name and numbers for link-hint filtering
+              </label>
+            </td>
+          </tr>
+          <tr id="waitForEnterForFilteredHintsContainer">
+            <td class="caption"></td>
+            <td verticalAlign="top" class="booleanOption">
+              <div class="help">
+                <div class="example">
+                  You activate the link with <tt>Enter</tt>, <em>always</em>; so you never accidentally type Vimium
+                  commands.
+                </div>
+              </div>
+              <label>
+                <input id="waitForEnterForFilteredHints" type="checkbox"/>
+                Require <tt>Enter</tt> when filtering hints
               </label>
             </td>
           </tr>
@@ -147,12 +163,12 @@ b: http://b.com/?q=%s description
             <td verticalAlign="top" class="booleanOption">
               <div class="help">
                 <div class="example">
-                  When enabled, the HUD will not be displayed.
+                  When enabled, the HUD will not be displayed in insert mode.
                 </div>
               </div>
               <label>
                 <input id="hideHud" type="checkbox"/>
-                Hide the Heads Up Display (HUD)
+                Hide the Heads Up Display (HUD) in insert mode
               </label>
             </td>
           </tr>
@@ -233,6 +249,36 @@ b: http://b.com/?q=%s description
               <div class="nonEmptyTextOption">
             </td>
           </tr>
+
+          <!-- Vimium Labs -->
+          <!--
+          Disabled.  But we leave this code here as a template for the next time we need to introduce "Vimium Labs".
+          <tr>
+            <td colspan="2"><header>Vimium Labs</header></td>
+          </tr>
+          <tr>
+            <td class="caption"></td>
+            <td>
+                <div class="help">
+                  <div class="example">
+                  </div>
+                </div>
+                These features are experimental and may be changed or removed in future releases.
+            </td>
+          </tr>
+          <tr>
+            <td class="caption">Search weighting</td>
+            <td>
+                <div class="help">
+                  <div class="example">
+                    How prominent should suggestions be in the vomnibar?
+                    <tt>0</tt> disables suggestions altogether.
+                  </div>
+                </div>
+              <input id="omniSearchWeight" type="number" min="0.0" max="1.0" step="0.05" />(0 to 1)
+            </td>
+          </tr>
+          -->
         </tbody>
       </table>
     </div>
@@ -246,12 +292,13 @@ b: http://b.com/?q=%s description
           <tr>
             <td id="footerTableData">
               <span id="helpText">
-                Type <strong>?</strong> to show the Vimium help dialog.
+                Type <strong>?</strong> to show the help dialog.
                 <br/>
                 Type <strong>Ctrl-Enter</strong> to save <i>all</i> options.
               </span>
             </td>
-            <td id="saveOptionsTableData">
+            <td id="saveOptionsTableData" nowrap>
+              <button id="advancedOptionsButton"></button>
               <button id="saveOptions" disabled="true">No Changes</button>
             </td>
           </tr>

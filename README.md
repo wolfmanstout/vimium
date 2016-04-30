@@ -41,10 +41,11 @@ Navigating the current page:
     F       open a link in a new tab
     r       reload
     gs      view source
-    i       enter insert mode -- all commands will be ignored until you hit esc to exit
+    i       enter insert mode -- all commands will be ignored until you hit Esc to exit
     yy      copy the current url to the clipboard
     yf      copy a link url to the clipboard
     gf      cycle forward to the next frame
+    gF      focus the main/top frame
 
 Navigating to new pages:
 
@@ -55,10 +56,12 @@ Navigating to new pages:
 
 Using find:
 
-    /       enter find mode -- type your search query and hit enter to search or esc to cancel
-            See here for advanced usage (regular expressions): https://github.com/philc/vimium/wiki/Find-Mode
+    /       enter find mode
+              -- type your search query and hit enter to search, or Esc to cancel
     n       cycle forward to the next find match
     N       cycle backward to the previous find match
+
+For advanced usage, see [regular expressions](https://github.com/philc/vimium/wiki/Find-Mode) on the wiki.
 
 Navigating your history:
 
@@ -67,29 +70,38 @@ Navigating your history:
 
 Manipulating tabs:
 
-    J, gT      go one tab left
-    K, gt      go one tab right
-    g0         go to the first tab
-    g$         go to the last tab
-    t          create tab
-    yt         duplicate current tab
-    x          close current tab
-    X          restore closed tab (i.e. unwind the 'x' command)
-    T          search through your open tabs
-    <a-p>      pin/unpin current tab
+    J, gT   go one tab left
+    K, gt   go one tab right
+    g0      go to the first tab
+    g$      go to the last tab
+    t       create tab
+    yt      duplicate current tab
+    x       close current tab
+    X       restore closed tab (i.e. unwind the 'x' command)
+    T       search through your open tabs
+    <a-p>   pin/unpin current tab
+
+Using marks:
+
+    ma, mA  set local mark "a" (global mark "A")
+    `a, `A  jump to local mark "a" (global mark "A")
+    ``      jump back to the position before the previous jump
+              -- that is, before the previous gg, G, n, N, / or `a
 
 Additional advanced browsing commands:
 
-    ]]      Follow the link labeled 'next' or '>'. Helpful for browsing paginated sites.
-    [[      Follow the link labeled 'previous' or '<'. Helpful for browsing paginated sites.
+    ]], [[  Follow the link labeled 'next' or '>' ('previous' or '<')
+              - helpful for browsing paginated sites
     <a-f>   open multiple links in a new tab
     gi      focus the first (or n-th) text input box on the page
     gu      go up one level in the URL hierarchy
     gU      go up to root of the URL hierarchy
     zH      scroll all the way left
     zL      scroll all the way right
+    v       enter visual mode; use p/P to paste-and-go, use y to yank
+    V       enter visual line mode
 
-Vimium supports command repetition so, for example, hitting `5t` will open 5 tabs in rapid succession. `<ESC>` (or
+Vimium supports command repetition so, for example, hitting `5t` will open 5 tabs in rapid succession. `<Esc>` (or
 `<c-[>`) will clear any partial commands in the queue and will also exit insert and find modes.
 
 There are some advanced commands which aren't documented here; refer to the help dialog (type `?`) for a full
@@ -98,8 +110,7 @@ list.
 Custom Key Mappings
 -------------------
 
-You may remap or unmap any of the default key bindings in the "Key mappings" section under "Advanced Options"
-on the options page.
+You may remap or unmap any of the default key bindings in the "Custom key mappings" on the options page.
 
 Enter one of the following key mapping commands per line:
 
@@ -116,23 +127,27 @@ Examples:
 - `unmap <c-d>` removes any mapping for ctrl+d and restores Chrome's default behavior.
 - `unmap r` removes any mapping for the r key.
 
-Available Vimium commands can be found via the "Show Available Commands" link near the key mapping box. The
-command name appears to the right of the description in parenthesis.
+Available Vimium commands can be found via the "Show available commands" link
+near the key mapping box on the options page. The command name appears to the
+right of the description in parenthesis.
 
-You can add comments to your key mappings by starting a line with `"` or `#`.
+You can add comments to key mappings by starting a line with `"` or `#`.
 
 The following special keys are available for mapping:
 
 - `<c-*>`, `<a-*>`, `<m-*>` for ctrl, alt, and meta (command on Mac) respectively with any key. Replace `*`
   with the key of choice.
 - `<left>`, `<right>`, `<up>`, `<down>` for the arrow keys
+- `<space>` for the space key
 - `<f1>` through `<f12>` for the function keys
 
 Shifts are automatically detected so, for example, `<c-&>` corresponds to ctrl+shift+7 on an English keyboard.
 
 More documentation
 ------------------
-Many of the more advanced or involved features are documented on [Vimium's github wiki](https://github.com/philc/vimium/wiki).
+Many of the more advanced or involved features are documented on
+[Vimium's github wiki](https://github.com/philc/vimium/wiki). Also
+see the [FAQ](https://github.com/philc/vimium/wiki/FAQ).
 
 Contributing
 ------------
@@ -140,6 +155,76 @@ Please see [CONTRIBUTING.md](https://github.com/philc/vimium/blob/master/CONTRIB
 
 Release Notes
 -------------
+Next version (not yet released)
+
+- New commands:
+    - `visitPreviousTab` - visit the previous tab (by recency) with `^`, or the tab before that with `2^`.
+    - `passNextKey` - pass the next key to the page;  for example, with `map
+      <c-]> passNextKey`, you can close Facebook's messenger popups with `<c-]><Esc>`.
+- Link hints:
+    - Now work across all frames in the tab.
+    - Now select frames and scrollable elements.
+    - Now accept a count prefix; `3F` opens three new background tabs,  `999F` opens many tabs.
+    - For filtered link hints, a new option requires you to press `Enter` to activate a link; this
+      prevents unintentionally triggering Vimium commands with trailing keystrokes.
+- Miscellaneous:
+    - `gg` now accepts a `count` prefix.
+    - `W` now accepts a count prefix; `3W` moves three tabs to a new window.
+    - With smooth scrolling, `2j`-and-hold now gives a faster scroll than `j`-and-hold.
+    - You can now bind keys to a command with a defined count prefix; for example, `map d scrollDown count=4`.
+    - You can now bind three-key (or longer) sequences; for example, `map abc enterInsertMode`.
+    - `c-y` and `c-e` now scroll in visual mode.
+    - The Vimium help dialog has been re-styled.
+- Bug fixes:
+    - `<c-a-[>` is not longer treated as escape.
+    - Fix icon display and memory leak due to regression in recent Chrome versions (49+).
+- For web-devs only:
+    - When disabled on a tab, Vimium no longer pollutes the dev console with network requests.
+
+1.54 (2016-01-30)
+
+- Fix occasional endless scrolling (#1911).
+
+1.53 (2015-09-25)
+
+- Vimium now works on the new-tab page for Chrome 47.
+- `g0` and `g$` now accept count prefixes; so `2g0` selects the second tab, and so on.
+- Bug fixes:
+    - Fix `moveTabLeft` and `moveTabRight` for pinned tabs (#1814 and #1815).
+
+1.52 (2015-09-09)
+
+- Search completion for selected custom search engines
+  (details on the [wiki](https://github.com/philc/vimium/wiki/Search-Completion)).
+- Use `Tab` on an empty Vomnibar to repeat or edit recent queries
+  (details on the [wiki](https://github.com/philc/vimium/wiki/Tips-and-Tricks#repeat-recent-vomnibar-queries)).
+- Marks:
+    - Use <tt>\`\`</tt> to jump back to the previous position after jump-like movements: <br/>
+        (`gg`, `G`, `n`, `N`, `/` and local mark movements).
+    - Global marks are now persistent and synced.
+- For numeric link hints, you can now use `Tab` and `Enter` to select hints, and hints are ordered by the best
+  match.
+- The Find Mode text entry box now supports editing, pasting, and better handles non-latin characters.
+- Vimium now works on XML pages.
+- Bug fixes.
+
+1.51 (2015-05-02)
+
+- Bug [fixes](https://github.com/philc/vimium/pulls?utf8=%E2%9C%93&q=is%3Apr+sort%3Aupdated-desc+is%3Aclosed+merged%3A%3E%3D2015-04-26+merged%3A%3C2015-05-02+state%3Amerged).
+
+1.50 (2015-04-26)
+
+- Visual mode (in beta): use `v` and then vim-like keystrokes to select text on the page. Use `y` to yank or
+  `p` and `P` to search with your default search engine.. Please provide feedback on Github.
+- Added the option to prevent pages from stealing focus from Vimium when loaded.
+- Many bugfixes for custom search engines, and search engines can now have a description.
+- Better support for frames: key exclusion rules are much improved and work within frames; the Vomnibar is
+  always activated in the main frame; and a new command (`gF`) focuses the main frame.
+- Find mode now has history. Use the up arrow to select previous searches.
+- Ctrl and Shift when using link hints changes the tab in which links are opened in (reinstated feature).
+- Focus input (`gi`) remembers previously-visited inputs.
+- Bug fixes.
+
 1.49 (2014-12-16)
 
 - An option to toggle smooth scrolling.
@@ -174,7 +259,7 @@ Release Notes
 - Added `gU`, which goes to the root of the current URL.
 - Added `yt`, which duplicates the current tab.
 - Added `W`, which moves the current tab to a new window.
-- Added marks for saving and jumping to sections of a page. `mX` to set a mark and `X` to return to it.
+- Added marks for saving and jumping to sections of a page. `mX` to set a mark and `` `X`` to return to it.
 - Added "LinkHints.activateModeToOpenIncognito", currently an advanced, unbound command.
 - Disallowed repeat tab closings, since this causes trouble for many people.
 - Update our Chrome APIs so Vimium works on Chrome 28+.
@@ -344,7 +429,7 @@ does not support command repetition.
 -  Bug fixes related to entering insert mode when the page first loads, and when focusing Flash embeds.
 -  Added command listing to the Options page for easy reference.
 -  `J` & `K` have reversed for tab switching: `J` goes left and `K` goes right.
--  `<c-[>` is now equivalent to ESC, to match the behavior of VIM.
+-  `<c-[>` is now equivalent to `Esc`, to match the behavior of VIM.
 -  `<c-e>` and `<c-y>` are now mapped to scroll down and up respectively.
 -  The characters used for link hints are now configurable under Advanced Options.
 
@@ -354,7 +439,7 @@ does not support command repetition.
 -  Command `yy` to yank (copy) the current tab's url to the clipboard.
 -  Better Linux support.
 -  Fix for `Shift+F` link hints.
--  `ESC` now clears the keyQueue. So, for example, hitting `g`, `ESC`, `g` will no longer scroll the page.
+-  `Esc` now clears the keyQueue. So, for example, hitting `g`, `Esc`, `g` will no longer scroll the page.
 
 1.1 (2010-01-03)
 

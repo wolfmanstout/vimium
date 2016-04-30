@@ -1,23 +1,22 @@
-root = exports ? window
-
 RegexpCache =
   cache: {}
+  clear: (@cache = {}) ->
   get: (pattern) ->
-    if regexp = @cache[pattern]
-      regexp
+    if pattern of @cache
+      @cache[pattern]
     else
       @cache[pattern] =
         # We use try/catch to ensure that a broken regexp doesn't wholly cripple Vimium.
         try
           new RegExp("^" + pattern.replace(/\*/g, ".*") + "$")
         catch
+          BgUtils.log "bad regexp in exclusion rule: #{pattern}"
           /^$/ # Match the empty string.
 
-# The Exclusions class manages the exclusion rule setting.
-# An exclusion is an object with two attributes: pattern and passKeys.
-# The exclusions are an array of such objects.
+# The Exclusions class manages the exclusion rule setting.  An exclusion is an object with two attributes:
+# pattern and passKeys.  The exclusion rules are an array of such objects.
 
-root.Exclusions = Exclusions =
+Exclusions =
   # Make RegexpCache, which is required on the page popup, accessible via the Exclusions object.
   RegexpCache: RegexpCache
 
@@ -27,46 +26,32 @@ root.Exclusions = Exclusions =
   # is the default.  However, when called from the page popup, we are testing what effect candidate new rules
   # would have on the current tab.  In this case, the candidate rules are provided by the caller.
   getRule: (url, rules=@rules) ->
-    matches = (rule for rule in rules when rule.pattern and 0 <= url.search(RegexpCache.get(rule.pattern)))
-    # An absolute exclusion rule (with no passKeys) takes priority.
-    for rule in matches
+    matchingRules = (rule for rule in rules when rule.pattern and 0 <= url.search RegexpCache.get rule.pattern)
+    # An absolute exclusion rule (one with no passKeys) takes priority.
+    for rule in matchingRules
       return rule unless rule.passKeys
-    if 0 < matches.length
-      pattern: (rule.pattern for rule in matches).join " | " # Not used; for debugging only.
-      passKeys: Utils.distinctCharacters (rule.passKeys for rule in matches).join ""
+    # Strip whitespace from all matching passKeys strings, and join them together.
+    passKeys = (rule.passKeys.split(/\s+/).join "" for rule in matchingRules).join ""
+    if 0 < matchingRules.length
+      passKeys: Utils.distinctCharacters passKeys
     else
       null
+
+  isEnabledForUrl: (url) ->
+    rule = Exclusions.getRule url
+    isEnabledForUrl: not rule or 0 < rule.passKeys.length
+    passKeys: rule?.passKeys ? ""
 
   setRules: (rules) ->
     # Callers map a rule to null to have it deleted, and rules without a pattern are useless.
     @rules = rules.filter (rule) -> rule and rule.pattern
-    Settings.set("exclusionRules", @rules)
+    Settings.set "exclusionRules", @rules
 
-  postUpdateHook: (rules) ->
-    @rules = rules
+  postUpdateHook: (@rules) ->
+    RegexpCache.clear()
 
-# Development and debug only.
-# Enable this (temporarily) to restore legacy exclusion rules from backup.
-if false and Settings.has("excludedUrlsBackup")
-  Settings.clear("exclusionRules")
-  Settings.set("excludedUrls", Settings.get("excludedUrlsBackup"))
+# Register postUpdateHook for exclusionRules setting.
+Settings.postUpdateHooks["exclusionRules"] = Exclusions.postUpdateHook.bind Exclusions
 
-if not Settings.has("exclusionRules") and Settings.has("excludedUrls")
-  # Migration from the legacy representation of exclusion rules.
-  #
-  # In Vimium 1.45 and in github/master on 27 August, 2014, exclusion rules are represented by the setting:
-  #   excludedUrls: "http*://www.google.com/reader/*\nhttp*://mail.google.com/* jk"
-  #
-  # The new (equivalent) settings is:
-  #   exclusionRules: [ { pattern: "http*://www.google.com/reader/*", passKeys: "" }, { pattern: "http*://mail.google.com/*", passKeys: "jk" } ]
-
-  parseLegacyRules = (lines) ->
-    for line in lines.trim().split("\n").map((line) -> line.trim())
-      if line.length and line.indexOf("#") != 0 and line.indexOf('"') != 0
-        parse = line.split(/\s+/)
-        { pattern: parse[0], passKeys: parse[1..].join("") }
-
-  Exclusions.setRules(parseLegacyRules(Settings.get("excludedUrls")))
-  # We'll keep a backup of the "excludedUrls" setting, just in case.
-  Settings.set("excludedUrlsBackup", Settings.get("excludedUrls")) if not Settings.has("excludedUrlsBackup")
-  Settings.clear("excludedUrls")
+root = exports ? window
+extend root, {Exclusions}

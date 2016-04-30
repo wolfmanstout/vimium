@@ -8,8 +8,24 @@
 exports.window = {}
 exports.localStorage = {}
 
+global.navigator =
+  appVersion: "5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/45.0.2454.85 Safari/537.36"
+
+global.document =
+  createElement: -> {}
+  addEventListener: ->
+
+global.XMLHttpRequest =
+  class XMLHttpRequest
+    open: ->
+    onload: ->
+    send: ->
+
 exports.chrome =
+  areRunningVimiumTests: true
+
   runtime:
+    getURL: ->
     getManifest: () ->
       version: "1.2.3"
     onConnect:
@@ -18,6 +34,11 @@ exports.chrome =
       addListener: () -> true
     onInstalled:
       addListener: ->
+
+  extension:
+    getURL: (path) -> path
+    getBackgroundPage: -> {}
+    getViews: -> []
 
   tabs:
     onSelectionChanged:
@@ -38,19 +59,27 @@ exports.chrome =
       addListener: () -> true
     query: () -> true
 
+  webNavigation:
+    onHistoryStateUpdated:
+      addListener: () ->
+    onReferenceFragmentUpdated:
+      addListener: () ->
+
   windows:
     onRemoved:
       addListener: () -> true
     getAll: () -> true
+    onFocusChanged:
+      addListener: () -> true
 
   browserAction:
     setBadgeBackgroundColor: ->
   storage:
     # chrome.storage.local
     local:
-      get: ->
-      set: ->
-      remove: ->
+      get: (_, callback) -> callback?()
+      set: (_, callback) -> callback?()
+      remove: (_, callback) -> callback?()
 
     # chrome.storage.onChanged
     onChanged:
@@ -61,14 +90,14 @@ exports.chrome =
         chrome.runtime.lastError = undefined
         key_value = {}
         key_value[key] = { newValue: value }
-        @func(key_value,'synced storage stub') if @func
+        @func(key_value,'sync') if @func
 
       callEmpty: (key) ->
         chrome.runtime.lastError = undefined
         if @func
           items = {}
           items[key] = {}
-          @func(items,'synced storage stub')
+          @func(items,'sync')
 
     session:
       MAX_SESSION_RESULTS: 25

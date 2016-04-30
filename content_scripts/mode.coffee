@@ -6,13 +6,6 @@
 # name:
 #   A name for this mode.
 #
-# badge:
-#   A badge (to appear on the browser popup).
-#   Optional.  Define a badge if the badge is constant; for example, in find mode the badge is always "/".
-#   Otherwise, do not define a badge, but instead override the updateBadge method; for example, in passkeys
-#   mode, the badge may be "P" or "", depending on the configuration state.  Or, if the mode *never* shows a
-#   badge, then do neither.
-#
 # keydown:
 # keypress:
 # keyup:
@@ -34,32 +27,51 @@ count = 0
 
 class Mode
   # If Mode.debug is true, then we generate a trace of modes being activated and deactivated on the console.
-  debug: false
+  @debug: false
   @modes: []
 
   # Constants; short, readable names for the return values expected by handlerStack.bubbleEvent.
-  continueBubbling: true
-  suppressEvent: false
-  stopBubblingAndTrue: handlerStack.stopBubblingAndTrue
-  stopBubblingAndFalse: handlerStack.stopBubblingAndFalse
+  continueBubbling: handlerStack.continueBubbling
+  suppressEvent: handlerStack.suppressEvent
+  passEventToPage: handlerStack.passEventToPage
+  suppressPropagation: handlerStack.suppressPropagation
   restartBubbling: handlerStack.restartBubbling
+
+  alwaysContinueBubbling: handlerStack.alwaysContinueBubbling
+  alwaysSuppressPropagation: handlerStack.alwaysSuppressPropagation
 
   constructor: (@options = {}) ->
     @handlers = []
     @exitHandlers = []
     @modeIsActive = true
-    @badge = @options.badge || ""
+    @modeIsExiting = false
     @name = @options.name || "anonymous"
 
     @count = ++count
     @id = "#{@name}-#{@count}"
     @log "activate:", @id
 
+    # If options.suppressAllKeyboardEvents is truthy, then all keyboard events are suppressed.  This avoids
+    # the need for modes which suppress all keyboard events 1) to provide handlers for all of those events,
+    # or 2) to worry about event suppression and event-handler return values.
+    if @options.suppressAllKeyboardEvents
+      for type in [ "keydown", "keypress", "keyup" ]
+        do (handler = @options[type]) =>
+          @options[type] = (event) => @alwaysSuppressPropagation => handler? event
+
     @push
       keydown: @options.keydown || null
       keypress: @options.keypress || null
       keyup: @options.keyup || null
-      updateBadge: (badge) => @alwaysContinueBubbling => @updateBadge badge
+      indicator: =>
+        # Update the mode indicator.  Setting @options.indicator to a string shows a mode indicator in the
+        # HUD.  Setting @options.indicator to 'false' forces no mode indicator.  If @options.indicator is
+        # undefined, then the request propagates to the next mode.
+        # The active indicator can also be changed with @setIndicator().
+        if @options.indicator?
+          if @options.indicator then HUD.show @options.indicator else HUD.hide true, false
+          @passEventToPage
+        else @continueBubbling
 
     # If @options.exitOnEscape is truthy, then the mode will exit when the escape key is pressed.
     if @options.exitOnEscape
@@ -93,32 +105,21 @@ class Mode
         "focus": (event) => @alwaysContinueBubbling =>
           @exit event if DomUtils.isFocusable event.target
 
-    # Some modes are singletons: there may be at most one instance active at any time.  A mode is a singleton
-    # if @options.singleton is truthy.  The value of @options.singleton should be the key which is intended to
-    # be unique.  New instances deactivate existing instances with the same key.
-    if @options.singleton
-      do =>
-        singletons = Mode.singletons ||= {}
-        key = Utils.getIdentity @options.singleton
-        @onExit -> delete singletons[key]
-        @deactivateSingleton @options.singleton
-        singletons[key] = @
-
-    # If @options.trackState is truthy, then the mode mainatins the current state in @enabled and @passKeys,
-    # and calls @registerStateChange() (if defined) whenever the state changes. The mode also tracks the
-    # current keyQueue in @keyQueue.
-    if @options.trackState
-      @enabled = false
-      @passKeys = ""
-      @keyQueue = ""
+    # If @options.exitOnScroll is truthy, then the mode will exit on any scroll event.
+    if @options.exitOnScroll
       @push
-        _name: "mode-#{@id}/registerStateChange"
-        registerStateChange: ({ enabled: enabled, passKeys: passKeys }) => @alwaysContinueBubbling =>
-          if enabled != @enabled or passKeys != @passKeys
-            @enabled = enabled
-            @passKeys = passKeys
-            @registerStateChange?()
-        registerKeyQueue: ({ keyQueue: keyQueue }) => @alwaysContinueBubbling => @keyQueue = keyQueue
+        _name: "mode-#{@id}/exitOnScroll"
+        "scroll": (event) => @alwaysContinueBubbling => @exit event
+
+    # Some modes are singletons: there may be at most one instance active at any time.  A mode is a singleton
+    # if @options.singleton is set.  The value of @options.singleton should be the key which is intended to be
+    # unique.  New instances deactivate existing instances with the same key.
+    if @options.singleton
+      singletons = Mode.singletons ||= {}
+      key = @options.singleton
+      @onExit -> delete singletons[key]
+      singletons[key]?.exit()
+      singletons[key] = this
 
     # If @options.passInitialKeyupEvents is set, then we pass initial non-printable keyup events to the page
     # or to other extensions (because the corresponding keydown events were passed).  This is used when
@@ -128,12 +129,38 @@ class Mode
         _name: "mode-#{@id}/passInitialKeyupEvents"
         keydown: => @alwaysContinueBubbling -> handlerStack.remove()
         keyup: (event) =>
-          if KeyboardUtils.isPrintable event then @stopBubblingAndFalse else @stopBubblingAndTrue
+          if KeyboardUtils.isPrintable event then @suppressPropagation else @passEventToPage
 
-    Mode.modes.push @
-    Mode.updateBadge()
+    # if @options.suppressTrailingKeyEvents is set, then  -- on exit -- we suppress all key events until a
+    # subsquent (non-repeat) keydown or keypress.  In particular, the intention is to catch keyup events for
+    # keys which we have handled, but which otherwise might trigger page actions (if the page is listening for
+    # keyup events).
+    if @options.suppressTrailingKeyEvents
+      @onExit ->
+        handler = (event) ->
+          if event.repeat
+            handlerStack.suppressEvent
+          else
+            keyEventSuppressor.exit()
+            handlerStack.continueBubbling
+
+        keyEventSuppressor = new Mode
+          name: "suppress-trailing-key-events"
+          keydown: handler
+          keypress: handler
+          keyup: -> handlerStack.suppressPropagation
+
+    Mode.modes.push this
+    @setIndicator()
     @logModes()
     # End of Mode constructor.
+
+  setIndicator: (indicator = @options.indicator) ->
+    @options.indicator = indicator
+    Mode.setIndicator()
+
+  @setIndicator: ->
+    handlerStack.bubbleEvent "indicator"
 
   push: (handlers) ->
     handlers._name ||= "mode-#{@id}"
@@ -146,50 +173,25 @@ class Mode
   onExit: (handler) ->
     @exitHandlers.push handler
 
-  exit: ->
+  exit: (args...) ->
     if @modeIsActive
       @log "deactivate:", @id
-      handler() for handler in @exitHandlers
-      handlerStack.remove handlerId for handlerId in @handlers
-      Mode.modes = Mode.modes.filter (mode) => mode != @
-      Mode.updateBadge()
+      unless @modeIsExiting
+        @modeIsExiting = true
+        handler args... for handler in @exitHandlers
+        handlerStack.remove handlerId for handlerId in @handlers
+      Mode.modes = Mode.modes.filter (mode) => mode != this
       @modeIsActive = false
-
-  deactivateSingleton: (singleton) ->
-    Mode.singletons?[Utils.getIdentity singleton]?.exit()
-
-  # The badge is chosen by bubbling an "updateBadge" event down the handler stack allowing each mode the
-  # opportunity to choose a badge. This is overridden in sub-classes.
-  updateBadge: (badge) ->
-    badge.badge ||= @badge
-
-  # Shorthand for an otherwise long name.  This wraps a handler with an arbitrary return value, and always
-  # yields @continueBubbling instead.  This simplifies handlers if they always continue bubbling (a common
-  # case), because they do not need to be concerned with the value they yield.
-  alwaysContinueBubbling: handlerStack.alwaysContinueBubbling
-
-  # Activate a new instance of this mode, together with all of its original options (except its main
-  # keybaord-event handlers; these will be recreated).
-  cloneMode: ->
-    delete @options[key] for key in [ "keydown", "keypress", "keyup" ]
-    new @constructor @options
-
-  # Static method.  Used externally and internally to initiate bubbling of an updateBadge event and to send
-  # the resulting badge to the background page.  We only update the badge if this document (hence this frame)
-  # has the focus.
-  @updateBadge: ->
-    if document.hasFocus()
-      handlerStack.bubbleEvent "updateBadge", badge = badge: ""
-      chrome.runtime.sendMessage { handler: "setBadge", badge: badge.badge }, ->
+      @setIndicator()
 
   # Debugging routines.
   logModes: ->
-    if @debug
+    if Mode.debug
       @log "active modes (top to bottom):"
       @log " ", mode.id for mode in Mode.modes[..].reverse()
 
   log: (args...) ->
-    console.log args... if @debug
+    console.log args... if Mode.debug
 
   # For tests only.
   @top: ->
@@ -200,31 +202,12 @@ class Mode
     mode.exit() for mode in @modes
     @modes = []
 
-# BadgeMode is a pseudo mode for triggering badge updates on focus changes and state updates. It sits at the
-# bottom of the handler stack, and so it receives state changes *after* all other modes, and can override the
-# badge choice of the other modes.
-class BadgeMode extends Mode
-  constructor: () ->
-    super
-      name: "badge"
-      trackState: true
-
-    # FIXME(smblott) BadgeMode is currently triggering an updateBadge event on every focus event.  That's a
-    # lot, considerably more than necessary.  Really, it only needs to trigger when we change frame, or when
-    # we change tab.
-    @push
-      _name: "mode-#{@id}/focus"
-      "focus": => @alwaysContinueBubbling -> Mode.updateBadge()
-
-  updateBadge: (badge) ->
-    # If we're not enabled, then post an empty badge.
-    badge.badge = "" unless @enabled
-
-  # When the registerStateChange event bubbles to the bottom of the stack, all modes have been notified.  So
-  # it's now time to update the badge.
-  registerStateChange: ->
-    Mode.updateBadge()
+class SuppressAllKeyboardEvents extends Mode
+  constructor: (options = {}) ->
+    defaults =
+      name: "suppressAllKeyboardEvents"
+      suppressAllKeyboardEvents: true
+    super extend defaults, options
 
 root = exports ? window
-root.Mode = Mode
-root.BadgeMode = BadgeMode
+extend root, {Mode, SuppressAllKeyboardEvents}

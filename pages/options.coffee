@@ -1,8 +1,12 @@
 
 $ = (id) -> document.getElementById id
-bgUtils = chrome.extension.getBackgroundPage().Utils
-bgSettings = chrome.extension.getBackgroundPage().Settings
 bgExclusions = chrome.extension.getBackgroundPage().Exclusions
+
+# We have to use Settings from the background page here (not Settings, directly) to avoid a race condition for
+# the page popup.  Specifically, we must ensure that the settings have been updated on the background page
+# *before* the popup closes.  This ensures that any exclusion-rule changes are in place before the page
+# regains the focus.
+bgSettings = chrome.extension.getBackgroundPage().Settings
 
 #
 # Class hierarchy for various types of option.
@@ -17,7 +21,7 @@ class Option
     @element = $(@field)
     @element.addEventListener "change", @onUpdated
     @fetch()
-    Option.all.push @
+    Option.all.push this
 
   # Fetch a setting from localStorage, remember the @previous value and populate the DOM element.
   # Return the fetched value.
@@ -28,12 +32,8 @@ class Option
   # Write this option's new value back to localStorage, if necessary.
   save: ->
     value = @readValueFromElement()
-    if not @areEqual value, @previous
+    if JSON.stringify(value) != JSON.stringify @previous
       bgSettings.set @field, @previous = value
-      bgSettings.performPostUpdateHook @field, value
-
-  # Compare values; this is overridden by sub-classes.
-  areEqual: (a,b) -> a == b
 
   restoreToDefault: ->
     bgSettings.clear @field
@@ -118,20 +118,14 @@ class ExclusionRulesOption extends Option
   readValueFromElement: ->
     rules =
       for element in @element.getElementsByClassName "exclusionRuleTemplateInstance"
-        pattern: @getPattern(element).value.split(/\s+/).join ""
-        passKeys: @getPassKeys(element).value.split(/\s+/).join ""
+        pattern: @getPattern(element).value.trim()
+        passKeys: @getPassKeys(element).value.trim()
     rules.filter (rule) -> rule.pattern
-
-  areEqual: (a,b) ->
-    # Flatten each list of rules to a newline-separated string representation, and then use string equality.
-    # This is correct because patterns and passKeys cannot themselves contain newlines.
-    flatten = (rule) -> if rule and rule.pattern then rule.pattern + "\n" + rule.passKeys else ""
-    a.map(flatten).join("\n") == b.map(flatten).join("\n")
 
   # Accessors for the three main sub-elements of an "exclusionRuleTemplateInstance".
   getPattern: (element) -> element.querySelector(".pattern")
   getPassKeys: (element) -> element.querySelector(".passKeys")
-  getRemoveButton: (element) -> element.querySelector(".exclusionRemoveButtonButton")
+  getRemoveButton: (element) -> element.querySelector(".exclusionRemoveButton")
 
 # ExclusionRulesOnPopupOption is ExclusionRulesOption, extended with some UI tweeks suitable for use in the
 # page popup.  This also differs from ExclusionRulesOption in that, on the page popup, there is always a URL
@@ -187,6 +181,25 @@ class ExclusionRulesOnPopupOption extends ExclusionRulesOption
     else
       @url + "*"
 
+Options =
+  exclusionRules: ExclusionRulesOption
+  filterLinkHints: CheckBoxOption
+  waitForEnterForFilteredHints: CheckBoxOption
+  hideHud: CheckBoxOption
+  keyMappings: TextOption
+  linkHintCharacters: NonEmptyTextOption
+  linkHintNumbers: NonEmptyTextOption
+  newTabUrl: NonEmptyTextOption
+  nextPatterns: NonEmptyTextOption
+  previousPatterns: NonEmptyTextOption
+  regexFindMode: CheckBoxOption
+  scrollStepSize: NumberOption
+  smoothScroll: CheckBoxOption
+  grabBackFocus: CheckBoxOption
+  searchEngines: TextOption
+  searchUrl: NonEmptyTextOption
+  userDefinedLinkHintCss: TextOption
+
 initOptionsPage = ->
   onUpdated = ->
     $("saveOptions").removeAttribute "disabled"
@@ -194,33 +207,36 @@ initOptionsPage = ->
 
   # Display either "linkHintNumbers" or "linkHintCharacters", depending upon "filterLinkHints".
   maintainLinkHintsView = ->
-    hide = (el) -> el.parentNode.parentNode.style.display = "none"
-    show = (el) -> el.parentNode.parentNode.style.display = "table-row"
+    hide = (el) -> el.style.display = "none"
+    show = (el) -> el.style.display = "table-row"
     if $("filterLinkHints").checked
-      hide $("linkHintCharacters")
-      show $("linkHintNumbers")
+      hide $("linkHintCharactersContainer")
+      show $("linkHintNumbersContainer")
+      show $("waitForEnterForFilteredHintsContainer")
     else
-      show $("linkHintCharacters")
-      hide $("linkHintNumbers")
+      show $("linkHintCharactersContainer")
+      hide $("linkHintNumbersContainer")
+      hide $("waitForEnterForFilteredHintsContainer")
 
-  toggleAdvancedOptions =
-    do (advancedMode=false) ->
-      (event) ->
-        if advancedMode
-          $("advancedOptions").style.display = "none"
-          $("advancedOptionsLink").innerHTML = "Show advanced options&hellip;"
-        else
-          $("advancedOptions").style.display = "table-row-group"
-          $("advancedOptionsLink").innerHTML = "Hide advanced options"
-        advancedMode = !advancedMode
-        event.preventDefault()
-        # Prevent the "advanced options" link from retaining the focus.
-        document.activeElement.blur()
+  maintainAdvancedOptions = ->
+    if bgSettings.get "optionsPage_showAdvancedOptions"
+      $("advancedOptions").style.display = "table-row-group"
+      $("advancedOptionsButton").innerHTML = "Hide Advanced Options"
+    else
+      $("advancedOptions").style.display = "none"
+      $("advancedOptionsButton").innerHTML = "Show Advanced Options"
+  maintainAdvancedOptions()
+
+  toggleAdvancedOptions = (event) ->
+    bgSettings.set "optionsPage_showAdvancedOptions", not bgSettings.get "optionsPage_showAdvancedOptions"
+    maintainAdvancedOptions()
+    $("advancedOptionsButton").blur()
+    event.preventDefault()
 
   activateHelpDialog = ->
-    showHelpDialog chrome.extension.getBackgroundPage().helpDialogHtml(true, true, "Command Listing"), frameId
-    # Prevent the "show help" link from retaining the focus when clicked.
-    document.activeElement.blur()
+    request = showUnboundCommands: true, showCommandNames: true, customTitle: "Command Listing"
+    chrome.runtime.sendMessage extend(request, handler: "getHelpDialogHtml"), (response) ->
+      HelpDialog.toggle {html: response}
 
   saveOptions = ->
     Option.saveOptions()
@@ -228,7 +244,7 @@ initOptionsPage = ->
     $("saveOptions").innerHTML = "No Changes"
 
   $("saveOptions").addEventListener "click", saveOptions
-  $("advancedOptionsLink").addEventListener "click", toggleAdvancedOptions
+  $("advancedOptionsButton").addEventListener "click", toggleAdvancedOptions
   $("showCommands").addEventListener "click", activateHelpDialog
   $("filterLinkHints").addEventListener "click", maintainLinkHintsView
 
@@ -236,7 +252,6 @@ initOptionsPage = ->
     element.className = element.className + " example info"
     element.innerHTML = "Leave empty to reset this option."
 
-  maintainLinkHintsView()
   window.onbeforeunload = -> "You have unsaved changes to options." unless $("saveOptions").disabled
 
   document.addEventListener "keyup", (event) ->
@@ -244,27 +259,11 @@ initOptionsPage = ->
       document.activeElement.blur() if document?.activeElement?.blur
       saveOptions()
 
-  options =
-    exclusionRules: ExclusionRulesOption
-    filterLinkHints: CheckBoxOption
-    hideHud: CheckBoxOption
-    keyMappings: TextOption
-    linkHintCharacters: NonEmptyTextOption
-    linkHintNumbers: NonEmptyTextOption
-    newTabUrl: NonEmptyTextOption
-    nextPatterns: NonEmptyTextOption
-    previousPatterns: NonEmptyTextOption
-    regexFindMode: CheckBoxOption
-    scrollStepSize: NumberOption
-    smoothScroll: CheckBoxOption
-    grabBackFocus: CheckBoxOption
-    searchEngines: TextOption
-    searchUrl: NonEmptyTextOption
-    userDefinedLinkHintCss: TextOption
-
   # Populate options. The constructor adds each new object to "Option.all".
-  for name, type of options
+  for own name, type of Options
     new type(name,onUpdated)
+
+  maintainLinkHintsView()
 
 initPopupPage = ->
   chrome.tabs.getSelected null, (tab) ->
@@ -323,3 +322,6 @@ document.addEventListener "DOMContentLoaded", ->
 
   xhr.send()
 
+# Exported for tests.
+root = exports ? window
+extend root, {Options, isVimiumOptionsPage: true}

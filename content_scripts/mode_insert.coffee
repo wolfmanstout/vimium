@@ -10,20 +10,27 @@ class InsertMode extends Mode
 
     handleKeyEvent = (event) =>
       return @continueBubbling unless @isActive event
-      return @stopBubblingAndTrue unless event.type == 'keydown' and KeyboardUtils.isEscape event
+
+      # Check for a pass-next-key key.
+      if KeyboardUtils.getKeyCharString(event) in Settings.get "passNextKeyKeys"
+        new PassNextKeyMode
+        return @suppressEvent
+
+      return @passEventToPage unless event.type == 'keydown' and KeyboardUtils.isEscape event
       DomUtils.suppressKeyupAfterEscape handlerStack
       target = event.srcElement
       if target and DomUtils.isFocusable target
         # Remove the focus, so the user can't just get back into insert mode by typing in the same input box.
-        # NOTE(smblott, 2014/12/22) Including embeds for .blur() etc. here is experimental.  It appears to be
-        # the right thing to do for most common use cases.  However, it could also cripple flash-based sites and
-        # games.  See discussion in #1211 and #1194.
         target.blur()
+      else if target?.shadowRoot and @insertModeLock
+        # An editable element in a shadow DOM is focused; blur it.
+        @insertModeLock.blur()
       @exit event, event.srcElement
       @suppressEvent
 
     defaults =
       name: "insert"
+      indicator: if not @permanent and not Settings.get "hideHud"  then "Insert mode"
       keypress: handleKeyEvent
       keyup: handleKeyEvent
       keydown: handleKeyEvent
@@ -47,14 +54,30 @@ class InsertMode extends Mode
         # We can't rely on focus and blur events arriving in the expected order.  When the active element
         # changes, we might get "focus" before "blur".  We track the active element in @insertModeLock, and
         # exit only when that element blurs.
-        # We don't exit if we're running under edit mode.  Edit mode itself will handles that case.
-        @exit event, target if @insertModeLock and target == @insertModeLock and not @options.parentMode
+        @exit event, target if @insertModeLock and target == @insertModeLock
       "focus": (event) => @alwaysContinueBubbling =>
         if @insertModeLock != event.target and DomUtils.isFocusable event.target
           @activateOnElement event.target
+        else if event.target.shadowRoot
+          # A focusable element inside the shadow DOM might have been selected. If so, we can catch the focus
+          # event inside the shadow DOM. This fixes #853.
+          shadowRoot = event.target.shadowRoot
+          eventListeners = {}
+          for type in [ "focus", "blur" ]
+            eventListeners[type] = do (type) ->
+              (event) -> handlerStack.bubbleEvent type, event
+            shadowRoot.addEventListener type, eventListeners[type], true
+
+          handlerStack.push
+            _name: "shadow-DOM-input-mode"
+            blur: (event) ->
+              if event.target.shadowRoot == shadowRoot
+                handlerStack.remove()
+                for own type, listener of eventListeners
+                  shadowRoot.removeEventListener type, listener, true
 
     # Only for tests.  This gives us a hook to test the status of the permanently-installed instance.
-    InsertMode.permanentInstance = @ if @permanent
+    InsertMode.permanentInstance = this if @permanent
 
   isActive: (event) ->
     return false
@@ -69,22 +92,44 @@ class InsertMode extends Mode
   activateOnElement: (element) ->
     @log "#{@id}: activating (permanent)" if @debug and @permanent
     @insertModeLock = element
-    Mode.updateBadge()
 
   exit: (_, target)  ->
     if (target and target == @insertModeLock) or @global or target == undefined
       @log "#{@id}: deactivating (permanent)" if @debug and @permanent and @insertModeLock
       @insertModeLock = null
       # Exit, but only if this isn't the permanently-installed instance.
-      if @permanent then Mode.updateBadge() else super()
-
-  updateBadge: (badge) ->
-    badge.badge ||= @badge if @badge
-    badge.badge ||= "I" if @isActive badge
+      super() unless @permanent
 
   # Static stuff. This allows PostFindMode to suppress the permanently-installed InsertMode instance.
   @suppressedEvent: null
   @suppressEvent: (event) -> @suppressedEvent = event
 
+# This implements the pasNexKey command.
+class PassNextKeyMode extends Mode
+  constructor: (count = 1) ->
+    seenKeyDown = false
+    keyDownCount = 0
+
+    super
+      name: "pass-next-key"
+      indicator: "Pass next key."
+      # We exit on blur because, once we lose the focus, we can no longer track key events.
+      exitOnBlur: window
+      keypress: =>
+        @passEventToPage
+
+      keydown: =>
+        seenKeyDown = true
+        keyDownCount += 1
+        @passEventToPage
+
+      keyup: =>
+        if seenKeyDown
+          unless 0 < --keyDownCount
+            unless 0 < --count
+              @exit()
+        @passEventToPage
+
 root = exports ? window
 root.InsertMode = InsertMode
+root.PassNextKeyMode = PassNextKeyMode

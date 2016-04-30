@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Vimium (modified)",
-  "version": "1.49.2",
+  "version": "1.54",
   "description": "The Hacker's Browser. Vimium provides keyboard shortcuts for navigation and control in the spirit of Vim.",
   "icons": {  "16": "icons/icon16.png",
               "48": "icons/icon48.png",
@@ -9,11 +9,13 @@
   "background": {
     "scripts": [
       "lib/utils.js",
+      "lib/settings.js",
+      "background_scripts/bg_utils.js",
       "background_scripts/commands.js",
       "lib/clipboard.js",
-      "background_scripts/sync.js",
-      "background_scripts/settings.js",
       "background_scripts/exclusions.js",
+      "background_scripts/completion_engines.js",
+      "background_scripts/completion_search.js",
       "background_scripts/completion.js",
       "background_scripts/marks.js",
       "background_scripts/main.js"
@@ -28,6 +30,7 @@
     "storage",
     "sessions",
     "notifications",
+    "webNavigation",
     "<all_urls>"
   ],
   "content_scripts": [
@@ -38,17 +41,19 @@
              "lib/dom_utils.js",
              "lib/rect.js",
              "lib/handler_stack.js",
-             "lib/clipboard.js",
+             "lib/settings.js",
+             "lib/find_mode_history.js",
+             "content_scripts/mode.js",
              "content_scripts/ui_component.js",
              "content_scripts/link_hints.js",
              "content_scripts/vomnibar.js",
              "content_scripts/scroller.js",
              "content_scripts/marks.js",
-             "content_scripts/mode.js",
              "content_scripts/mode_insert.js",
-             "content_scripts/mode_passkeys.js",
              "content_scripts/mode_find.js",
-             "content_scripts/mode_visual_edit.js",
+             "content_scripts/mode_key_handler.js",
+             "content_scripts/mode_visual.js",
+             "content_scripts/hud.js",
              "content_scripts/vimium_frontend.js"
             ],
       "css": ["content_scripts/vimium.css"],
@@ -67,6 +72,10 @@
     "default_popup": "pages/popup.html"
   },
   "web_accessible_resources": [
-    "pages/vomnibar.html"
+    "pages/vomnibar.html",
+    "content_scripts/vimium.css",
+    "pages/hud.html",
+    "pages/help_dialog.html",
+    "pages/completion_engines.html"
   ]
 }
