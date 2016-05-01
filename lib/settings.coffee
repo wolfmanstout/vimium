@@ -109,7 +109,7 @@ Settings =
     scrollStepSize: 60
     smoothScroll: true
     keyMappings: "# Insert your preferred key mappings here."
-    linkHintCharacters: "sadfjklewcmpgh"
+    linkHintCharacters: "12345689"
     linkHintNumbers: "0123456789"
     filterLinkHints: false
     hideHud: false
@@ -135,8 +135,6 @@ Settings =
     # Default exclusion rules.
     exclusionRules:
       [
-        # Disable Vimium on Gmail.
-        { pattern: "https?://mail.google.com/*", passKeys: "" }
       ]
 
     # NOTE: If a page contains both a single angle-bracket link and a double angle-bracket link, then in

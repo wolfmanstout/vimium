@@ -83,7 +83,7 @@ class KeyHandlerMode extends Mode
 
   # This tests whether keyChar is a digit (and accounts for pass keys).
   isCountKey: (keyChar) ->
-    keyChar and (if 0 < @countPrefix then '0' else '1') <= keyChar <= '9' and not @isPassKey keyChar
+    false
 
   # Keystrokes are *never* considered pass keys if the user has begun entering a command.  So, for example, if
   # 't' is a passKey, then the "t"-s of 'gt' and '99t' are neverthless handled as regular keys.
