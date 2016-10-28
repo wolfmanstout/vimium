@@ -32,22 +32,29 @@ textInputXPath = (->
 # This is set by Frame.registerFrameId(). A frameId of 0 indicates that this is the top frame in the tab.
 frameId = null
 
-# For debugging only. This logs to the console on the background page.
+# For debugging only. This writes to the Vimium log page, the URL of whichis shown on the console on the
+# background page.
 bgLog = (args...) ->
   args = (arg.toString() for arg in args)
-  chrome.runtime.sendMessage handler: "log", message: args.join " "
+  Frame.postMessage "log", message: args.join " "
 
 # If an input grabs the focus before the user has interacted with the page, then grab it back (if the
 # grabBackFocus option is set).
 class GrabBackFocus extends Mode
+
   constructor: ->
+    exitEventHandler = =>
+      @alwaysContinueBubbling =>
+        @exit()
+        chrome.runtime.sendMessage handler: "sendMessageToFrames", message: name: "userIsInteractingWithThePage"
+
     super
       name: "grab-back-focus"
-      keydown: => @alwaysContinueBubbling => @exit()
+      keydown: exitEventHandler
 
     @push
       _name: "grab-back-focus-mousedown"
-      mousedown: => @alwaysContinueBubbling => @exit()
+      mousedown: exitEventHandler
 
     Settings.use "grabBackFocus", (grabBackFocus) =>
       # It is possible that this mode exits (e.g. due to a key event) before the settings are ready -- in
@@ -62,8 +69,17 @@ class GrabBackFocus extends Mode
         else
           @exit()
 
+    # This mode is active in all frames.  A user might have begun interacting with one frame without other
+    # frames detecting this.  When one GrabBackFocus mode exits, we broadcast a message to inform all
+    # GrabBackFocus modes that they should exit; see #2296.
+    chrome.runtime.onMessage.addListener listener = ({name}) =>
+      if name == "userIsInteractingWithThePage"
+        chrome.runtime.onMessage.removeListener listener
+        @exit() if @modeIsActive
+      false # We will not be calling sendResponse.
+
   grabBackFocus: (element) ->
-    return @continueBubbling unless DomUtils.isEditable element
+    return @continueBubbling unless DomUtils.isFocusable element
     element.blur()
     @suppressEvent
 
@@ -128,7 +144,7 @@ class NormalMode extends KeyHandlerMode
     else if registryEntry.background
       chrome.runtime.sendMessage {handler: "runBackgroundCommand", registryEntry, count}
     else
-      Utils.invokeCommandString registryEntry.command, count
+      Utils.invokeCommandString registryEntry.command, count, {registryEntry}
 
 installModes = ->
   # Install the permanent modes. The permanently-installed insert mode tracks focus/blur events, and
@@ -143,7 +159,7 @@ initializeOnEnabledStateKnown = (isEnabledForUrl) ->
   if isEnabledForUrl
     # We only initialize (and activate) the Vomnibar in the top frame.  Also, we do not initialize the
     # Vomnibar until we know that Vimium is enabled.  Thereafter, there's no more initialization to do.
-    Vomnibar.init() if DomUtils.isTopFrame()
+    DomUtils.documentComplete Vomnibar.init.bind Vomnibar if DomUtils.isTopFrame()
     initializeOnEnabledStateKnown = ->
 
 #
@@ -166,10 +182,12 @@ initializePreDomReady = ->
     linkHintsMessage: (request) -> HintCoordinator[request.messageType] request
 
   chrome.runtime.onMessage.addListener (request, sender, sendResponse) ->
-    # These requests are intended for the background page, but they're delivered to the options page too.
+    # Some requests intended for the background page are delivered to the options page too; ignore them.
     unless request.handler and not request.name
-      if isEnabledForUrl or request.name in ["checkEnabledAfterURLChange", "runInTopFrame"]
-        requestHandlers[request.name] request, sender, sendResponse
+      # Some request are handled elsewhere; ignore them too.
+      unless request.name in ["userIsInteractingWithThePage"]
+        if isEnabledForUrl or request.name in ["checkEnabledAfterURLChange", "runInTopFrame"]
+          requestHandlers[request.name] request, sender, sendResponse
     false # Ensure that the sendResponse callback is freed.
 
 # Wrapper to install event listeners.  Syntactic sugar.
@@ -257,8 +275,8 @@ Frame =
     window.removeEventListener "hashchange", onFocus
 
 setScrollPosition = ({ scrollX, scrollY }) ->
-  if DomUtils.isTopFrame()
-    DomUtils.documentReady ->
+  DomUtils.documentReady ->
+    if DomUtils.isTopFrame()
       window.focus()
       document.body.focus()
       if 0 < scrollX or 0 < scrollY
@@ -363,7 +381,7 @@ extend window,
     new VisualMode userLaunchedMode: true
 
   enterVisualLineMode: ->
-    new VisualLineMod userLaunchedMode: true
+    new VisualLineMode userLaunchedMode: true
 
   passNextKey: (count) ->
     new PassNextKeyMode count
@@ -375,7 +393,8 @@ extend window,
       (event) -> recentlyFocusedElement = event.target if DomUtils.isEditable event.target
     , true
 
-    (count, mode = InsertMode) ->
+    (count) ->
+      mode = InsertMode
       # Focus the first input element on the page, and create overlays to highlight all the input elements, with
       # the currently-focused element highlighted specially. Tabbing will shift focus to the next input element.
       # Pressing any other key will remove the overlays and the special tab behavior.
@@ -543,7 +562,7 @@ followLink = (linkElement) ->
 # next big thing', and 'more' over 'nextcompany', even if 'next' occurs before 'more' in :linkStrings.
 #
 findAndFollowLink = (linkStrings) ->
-  linksXPath = DomUtils.makeXPath(["a", "button", "*[@onclick or @role='link' or contains(@class, 'button')]"])
+  linksXPath = DomUtils.makeXPath(["a", "*[@onclick or @role='link' or contains(@class, 'button')]"])
   links = DomUtils.evaluateXPath(linksXPath, XPathResult.ORDERED_NODE_SNAPSHOT_TYPE)
   candidateLinks = []
 
@@ -563,7 +582,8 @@ findAndFollowLink = (linkStrings) ->
 
     linkMatches = false
     for linkString in linkStrings
-      if (link.innerText.toLowerCase().indexOf(linkString) != -1)
+      if link.innerText.toLowerCase().indexOf(linkString) != -1 ||
+          0 <= link.value?.indexOf? linkString
         linkMatches = true
         break
     continue unless linkMatches
@@ -595,7 +615,8 @@ findAndFollowLink = (linkStrings) ->
       else
         new RegExp linkString, "i"
     for candidateLink in candidateLinks
-      if (exactWordRegex.test(candidateLink.innerText))
+      if exactWordRegex.test(candidateLink.innerText) ||
+          (candidateLink.value && exactWordRegex.test(candidateLink.value))
         followLink(candidateLink)
         return true
   false
@@ -635,10 +656,11 @@ window.HelpDialog ?=
   abort: -> @helpUI.hide false if @isShowing()
 
   toggle: (request) ->
-    @helpUI ?= new UIComponent "pages/help_dialog.html", "vimiumHelpDialogFrame", ->
-    if @isShowing()
+    DomUtils.documentComplete =>
+      @helpUI ?= new UIComponent "pages/help_dialog.html", "vimiumHelpDialogFrame", ->
+    if @helpUI? and @isShowing()
       @helpUI.hide()
-    else
+    else if @helpUI?
       @helpUI.activate extend request,
         name: "activate", focus: true
 

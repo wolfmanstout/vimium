@@ -74,6 +74,7 @@ Manipulating tabs:
     K, gt   go one tab right
     g0      go to the first tab
     g$      go to the last tab
+    ^       visit the previously-visited tab
     t       create tab
     yt      duplicate current tab
     x       close current tab
@@ -96,6 +97,8 @@ Additional advanced browsing commands:
     gi      focus the first (or n-th) text input box on the page
     gu      go up one level in the URL hierarchy
     gU      go up to root of the URL hierarchy
+    ge      edit the current URL
+    gE      edit the current URL and open in a new tab
     zH      scroll all the way left
     zL      scroll all the way right
     v       enter visual mode; use p/P to paste-and-go, use y to yank
@@ -138,7 +141,7 @@ The following special keys are available for mapping:
 - `<c-*>`, `<a-*>`, `<m-*>` for ctrl, alt, and meta (command on Mac) respectively with any key. Replace `*`
   with the key of choice.
 - `<left>`, `<right>`, `<up>`, `<down>` for the arrow keys
-- `<space>` for the space key
+- `<space>` and `<backspace>` for the space and backspace keys
 - `<f1>` through `<f12>` for the function keys
 
 Shifts are automatically detected so, for example, `<c-&>` corresponds to ctrl+shift+7 on an English keyboard.
@@ -155,18 +158,55 @@ Please see [CONTRIBUTING.md](https://github.com/philc/vimium/blob/master/CONTRIB
 
 Release Notes
 -------------
-Next version (not yet released)
+
+Changes since the previous release (not yet in the Chrome Store version)
+
+- Features:
+    - You can now map multi-modifier keys, for example: `<c-a-X>`.
+    - Vimium can now do simple key mapping in some modes; see
+      [here](https://github.com/philc/vimium/wiki/Tips-and-Tricks#key-mapping).
+      This can be helpful with some non-English keyboards (and can also be used
+      to remap `Escape`).
+    - For *Custom key mappings* on the options page, lines which end with `\` are now continued on the following line.
+- Process:
+    - In order to provide faster bug fixes, we may in future push new releases without the noisy notification.
+
+1.57 (2016-10-01)
+
+- New commands:
+    - `toggleMuteTab` - mute or unmute the current tab (default binding
+      `<a-m>`), see also [advanced usage](https://github.com/philc/vimium/wiki/Tips-and-Tricks#muting-tabs).
+- Other new features:
+    - You can now map `<backspace>` to a Vimium command (e.g. `map <backspace> goBack`).
+    - For link hints, when one hint marker is covered by another, `<Space>` now
+      rotates the stacking order.  If you use filtered hints, you'll need to
+      use a modifier (e.g. `<c-Space>`).
+- Changes:
+    - Global marks now search for an existing matching tab by prefix (rather than exact match).
+      This allows global marks to be used as quick bookmarks on sites (like Facebook, Gmail, etc)
+      where the URL changes as you navigate around.
+- Bug fixes:
+    - `/i` can no longer hang Vimium while the page is loading.
+    - `<c-a-[>` is no longer handled (incorrectly) as `Escape`.  This also affects `<Alt-Gr-[>`.
+    - If `goX` is mapped, then `go` no longer launches the vomnibar.  This only affects three-key (or longer) bindings.
+
+1.56 (2016-06-11)
+
+- Vimium now works around a Chromium bug affecting users with non-standard keyboard layouts (see #2147).
+- Fixed a bug preventing visual line mode (`V`) from working.
+
+1.55 (2016-05-26)
 
 - New commands:
     - `visitPreviousTab` - visit the previous tab (by recency) with `^`, or the tab before that with `2^`.
-    - `passNextKey` - pass the next key to the page;  for example, with `map
-      <c-]> passNextKey`, you can close Facebook's messenger popups with `<c-]><Esc>`.
+    - `passNextKey` - pass the next key to the page. For example, using `map <c-]> passNextKey`, you can close
+      Facebook's messenger popups with `<c-]><Esc>`.
 - Link hints:
     - Now work across all frames in the tab.
     - Now select frames and scrollable elements.
-    - Now accept a count prefix; `3F` opens three new background tabs,  `999F` opens many tabs.
-    - For filtered link hints, a new option requires you to press `Enter` to activate a link; this
-      prevents unintentionally triggering Vimium commands with trailing keystrokes.
+    - Now accept a count prefix; `3F` opens three new background tabs, `999F` opens many tabs.
+    - For filtered link hints, a new option on the settings page requires you to press `Enter` to activate a
+      link; this prevents unintentionally triggering Vimium commands with trailing keystrokes.
 - Miscellaneous:
     - `gg` now accepts a `count` prefix.
     - `W` now accepts a count prefix; `3W` moves three tabs to a new window.
@@ -176,8 +216,8 @@ Next version (not yet released)
     - `c-y` and `c-e` now scroll in visual mode.
     - The Vimium help dialog has been re-styled.
 - Bug fixes:
-    - `<c-a-[>` is not longer treated as escape.
-    - Fix icon display and memory leak due to regression in recent Chrome versions (49+).
+    - `<c-a-[>` is no longer treated as escape.
+    - Fix icon display and memory leak due to a regression in recent Chrome versions (49+).
 - For web-devs only:
     - When disabled on a tab, Vimium no longer pollutes the dev console with network requests.
 
@@ -376,7 +416,7 @@ Next version (not yet released)
 -  In link hints mode, holding down the shift key will now toggle between opening in the current tab and
    opening in a new tab.
 -  Two new commands (`zH` and `zL`) to scroll to the left and right edges of the page.
--  A new command (`gi`) to focus the first (or n-th) text input box on the page.
+-  A new command (`gi`) to focus the first (or n-th) visible text input.
 -  A new command (`<a-f>`) to open up multiple links at a time in new tabs.
 -  Frame support.
 -  More robust support for non-US keyboard layouts.

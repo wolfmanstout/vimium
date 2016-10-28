@@ -9,6 +9,7 @@ Commands =
     @clearKeyMappingsAndSetDefaults()
     @parseCustomKeyMappings customKeyMappings
     @generateKeyStateMapping()
+    chrome.storage.local.set mapKeyRegistry: @mapKeyRegistry
 
   availableCommands: {}
   keyToCommandRegistry: {}
@@ -23,13 +24,13 @@ Commands =
 
     @availableCommands[command] = extend options, description: description
 
-  mapKeyToCommand: ({ key, command, options }) ->
+  mapKeyToCommand: ({ key, keySequence, command, options }) ->
     unless @availableCommands[command]
       BgUtils.log "#{command} doesn't exist!"
       return
 
     options ?= {}
-    @keyToCommandRegistry[key] = extend { command, options }, @availableCommands[command]
+    @keyToCommandRegistry[key] = extend { keySequence, command, options }, @availableCommands[command]
 
   # Lower-case the appropriate portions of named keys.
   #
@@ -39,32 +40,55 @@ Commands =
   # humans may prefer other forms <Left> or <C-a>.
   # On the other hand, <c-a> and <c-A> are different named keys - for one of
   # them you have to press "shift" as well.
-  normalizeKey: (key) ->
-    key.replace(/<[acm]-/ig, (match) -> match.toLowerCase())
-       .replace(/<([acm]-)?([a-zA-Z0-9]{2,5})>/g, (match, optionalPrefix, keyName) ->
-          "<" + (if optionalPrefix then optionalPrefix else "") + keyName.toLowerCase() + ">")
-       .replace /<space>/ig, " "
+  # We sort modifiers here to match the order used in keyboard_utils.coffee.
+  # The return value is a sequence of keys: e.g. "<Space><c-A>b" -> ["<space>", "<c-A>", "b"].
+  parseKeySequence: do ->
+    modifier = "(?:[acm]-)"                             # E.g. "a-", "c-", "m-".
+    namedKey = "(?:[a-z][a-z0-9]+)"                     # E.g. "left" or "f12" (always two characters or more).
+    modifiedKey = "(?:#{modifier}+(?:.|#{namedKey}))"   # E.g. "c-*" or "c-left".
+    specialKeyRegexp = new RegExp "^<(#{namedKey}|#{modifiedKey})>(.*)", "i"
+    (key) ->
+      if key.length == 0
+        []
+      # Parse "<c-a>bcd" as "<c-a>" and "bcd".
+      else if 0 == key.search specialKeyRegexp
+        [modifiers..., keyChar] = RegExp.$1.split "-"
+        keyChar = keyChar.toLowerCase() unless keyChar.length == 1
+        modifiers = (modifier.toLowerCase() for modifier in modifiers)
+        modifiers.sort()
+        ["<#{[modifiers..., keyChar].join '-'}>", @parseKeySequence(RegExp.$2)...]
+      else
+        [key[0], @parseKeySequence(key[1..])...]
 
   parseCustomKeyMappings: (customKeyMappings) ->
-    for line in customKeyMappings.split "\n"
-      unless  line[0] == "\"" or line[0] == "#"
-        tokens = line.replace(/\s+$/, "").split /\s+/
-        switch tokens[0]
-          when "map"
-            [ _, key, command, optionList... ] = tokens
-            if command? and @availableCommands[command]
-              key = @normalizeKey key
-              BgUtils.log "Mapping #{key} to #{command}"
-              @mapKeyToCommand { key, command, options: @parseCommandOptions command, optionList }
+    for line in BgUtils.parseLines customKeyMappings
+      tokens = line.split /\s+/
+      switch tokens[0]
+        when "map"
+          [ _, key, command, optionList... ] = tokens
+          keySequence = @parseKeySequence key
+          if command? and @availableCommands[command]
+            key = keySequence.join ""
+            BgUtils.log "mapping [\"#{keySequence.join '", "'}\"] to #{command}"
+            @mapKeyToCommand { key, command, keySequence, options: @parseCommandOptions command, optionList }
+          else
+            BgUtils.log "skipping [\"#{keySequence.join '", "'}\"] for #{command} -- something is not right"
 
-          when "unmap"
-            if tokens.length == 2
-              key = @normalizeKey tokens[1]
-              BgUtils.log "Unmapping #{key}"
-              delete @keyToCommandRegistry[key]
+        when "unmap"
+          if tokens.length == 2
+            keySequence = @parseKeySequence tokens[1]
+            key = keySequence.join ""
+            BgUtils.log "Unmapping #{key}"
+            delete @keyToCommandRegistry[key]
 
-          when "unmapAll"
-            @keyToCommandRegistry = {}
+        when "unmapAll"
+          @keyToCommandRegistry = {}
+
+        when "mapkey"
+          if tokens.length == 3
+            fromChar = @parseKeySequence tokens[1]
+            toChar = @parseKeySequence tokens[2]
+            @mapKeyRegistry[fromChar[0]] = toChar[0] if fromChar.length == toChar.length == 1
 
     # Push the key mapping for passNextKey into Settings so that it's available in the front end for insert
     # mode.  We exclude single-key mappings (that is, printable keys) because when users press printable keys
@@ -91,25 +115,28 @@ Commands =
 
   clearKeyMappingsAndSetDefaults: ->
     @keyToCommandRegistry = {}
-    @mapKeyToCommand { key, command } for own key, command of defaultKeyMappings
+    @mapKeyRegistry = {}
+    for own key, command of defaultKeyMappings
+      keySequence = @parseKeySequence key
+      key = keySequence.join ""
+      @mapKeyToCommand { key, command, keySequence }
 
   # This generates a nested key-to-command mapping structure. There is an example in mode_key_handler.coffee.
   generateKeyStateMapping: ->
-    # Keys are either literal characters, or "named" - for example <a-b> (alt+b), <left> (left arrow) or <f12>
-    # This regular expression captures two groups: the first is a named key, the second is the remainder of
-    # the string.
-    namedKeyRegex = /^(<(?:[amc]-.|(?:[amc]-)?[a-z0-9]{2,5})>)(.*)$/
     keyStateMapping = {}
     for own keys, registryEntry of @keyToCommandRegistry
       currentMapping = keyStateMapping
-      while 0 < keys.length
-        [key, keys] = if 0 == keys.search namedKeyRegex then [RegExp.$1, RegExp.$2] else [keys[0], keys[1..]]
+      for key, index in registryEntry.keySequence
         if currentMapping[key]?.command
-          break # Do not overwrite existing command bindings, they take priority.
-        else if 0 < keys.length
+          # Do not overwrite existing command bindings, they take priority.  NOTE(smblott) This is the legacy
+          # behaviour.
+          break
+        else if index < registryEntry.keySequence.length - 1
           currentMapping = currentMapping[key] ?= {}
         else
-          currentMapping[key] = registryEntry
+          currentMapping[key] = extend {}, registryEntry
+          # We don't need these properties in the content scripts.
+          delete registryEntry[prop] for prop in ["keySequence", "description"]
     chrome.storage.local.set normalModeKeyStateMapping: keyStateMapping
 
   # An ordered listing of all available commands, grouped by type. This is the order they will
@@ -172,6 +199,7 @@ Commands =
       "lastTab",
       "duplicateTab",
       "togglePinTab",
+      "toggleMuteTab",
       "removeTab",
       "restoreTab",
       "moveTabToNewWindow",
@@ -218,7 +246,6 @@ defaultKeyMappings =
   "<c-[>": "nextFrame"
   "<c-;>": "Vomnibar.activateBookmarks"
   "<c-'>": "Vomnibar.activateBookmarksInNewTab"
-
 
 # This is a mapping of: commandIdentifier => [description, options].
 # If the noRepeat and repeatLimit options are both specified, then noRepeat takes precedence.
@@ -290,7 +317,8 @@ commandDescriptions =
   restoreTab: ["Restore closed tab", { background: true, repeatLimit: 20 }]
 
   moveTabToNewWindow: ["Move tab to new window", { background: true }]
-  togglePinTab: ["Pin/unpin current tab", { background: true, noRepeat: true }]
+  togglePinTab: ["Pin or unpin current tab", { background: true, noRepeat: true }]
+  toggleMuteTab: ["Mute or unmute current tab", { background: true, noRepeat: true }]
 
   closeTabsOnLeft: ["Close tabs on the left", {background: true, noRepeat: true}]
   closeTabsOnRight: ["Close tabs on the right", {background: true, noRepeat: true}]

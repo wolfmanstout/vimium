@@ -20,7 +20,6 @@ class KeyHandlerMode extends Mode
 
   # Reset the key state, optionally retaining the count provided.
   reset: (@countPrefix = 0) ->
-    bgLog "Clearing key state: #{@countPrefix} (#{@name})"
     @keyState = [@keyMapping]
 
   constructor: (options) ->
@@ -34,8 +33,12 @@ class KeyHandlerMode extends Mode
       # We cannot track keyup events if we lose the focus.
       blur: (event) => @alwaysContinueBubbling => @keydownEvents = {} if event.target == window
 
+    @mapKeyRegistry = {}
+    Utils.monitorChromeStorage "mapKeyRegistry", (value) => @mapKeyRegistry = value
+
   onKeydown: (event) ->
     keyChar = KeyboardUtils.getKeyCharString event
+    keyChar = @mapKeyRegistry[keyChar] ? keyChar
     isEscape = KeyboardUtils.isEscape event
     if isEscape and (@countPrefix != 0 or @keyState.length != 1)
       @keydownEvents[event.keyCode] = true
@@ -62,6 +65,7 @@ class KeyHandlerMode extends Mode
 
   onKeypress: (event) ->
     keyChar = KeyboardUtils.getKeyCharString event
+    keyChar = @mapKeyRegistry[keyChar] ? keyChar
     if @isMappedKey keyChar
       @handleKeyChar keyChar
     else if @isCountKey keyChar
@@ -91,15 +95,15 @@ class KeyHandlerMode extends Mode
     @countPrefix == 0 and @keyState.length == 1 and keyChar in (@passKeys ? "")
 
   handleKeyChar: (keyChar) ->
-    bgLog "Handle key #{keyChar} (#{@name})"
+    bgLog "handle key #{keyChar} (#{@name})"
     # A count prefix applies only so long a keyChar is mapped in @keyState[0]; e.g. 7gj should be 1j.
     @countPrefix = 0 unless keyChar of @keyState[0]
     # Advance the key state.  The new key state is the current mappings of keyChar, plus @keyMapping.
     @keyState = [(mapping[keyChar] for mapping in @keyState when keyChar of mapping)..., @keyMapping]
-    command = (mapping for mapping in @keyState when "command" of mapping)[0]
-    if command
+    if @keyState[0].command?
+      command = @keyState[0]
       count = if 0 < @countPrefix then @countPrefix else 1
-      bgLog "Call #{command.command}[#{count}] (#{@name})"
+      bgLog "  invoke #{command.command} count=#{count} "
       @reset()
       @commandHandler {command, count}
     @suppressEvent

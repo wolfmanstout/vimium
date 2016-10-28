@@ -110,6 +110,7 @@ HintCoordinator =
 
   # The following messages are exchanged between frames while link-hints mode is active.
   updateKeyState: (request) -> @linkHintsMode.updateKeyState request
+  rotateHints: -> @linkHintsMode.rotateHints()
   setOpenLinkMode: ({modeIndex}) -> @linkHintsMode.setOpenLinkMode availableModes[modeIndex], false
   activateActiveHintMarker: -> @linkHintsMode.activateLink @linkHintsMode.markerMatcher.activeHintMarker
   getLocalHintMarker: (hint) -> if hint.frameId == frameId then @localHints[hint.localIndex] else null
@@ -120,7 +121,8 @@ HintCoordinator =
     @linkHintsMode = @localHints = null
 
 LinkHints =
-  activateMode: (count = 1, mode = OPEN_IN_CURRENT_TAB) ->
+  activateMode: (count = 1, {mode}) ->
+    mode ?= OPEN_IN_CURRENT_TAB
     if 0 < count or mode is OPEN_WITH_QUEUE
       HintCoordinator.prepareToActivateMode mode, (isSuccess) ->
         if isSuccess
@@ -128,12 +130,12 @@ LinkHints =
           # which would cause our new mode to exit immediately.
           Utils.nextTick -> LinkHints.activateMode count-1, mode
 
-  activateModeToOpenInNewTab: (count) -> @activateMode count, OPEN_IN_NEW_BG_TAB
-  activateModeToOpenInNewForegroundTab: (count) -> @activateMode count, OPEN_IN_NEW_FG_TAB
-  activateModeToCopyLinkUrl: (count) -> @activateMode count, COPY_LINK_URL
-  activateModeWithQueue: -> @activateMode 1, OPEN_WITH_QUEUE
-  activateModeToOpenIncognito: (count) -> @activateMode count, OPEN_INCOGNITO
-  activateModeToDownloadLink: (count) -> @activateMode count, DOWNLOAD_LINK_URL
+  activateModeToOpenInNewTab: (count) -> @activateMode count, mode: OPEN_IN_NEW_BG_TAB
+  activateModeToOpenInNewForegroundTab: (count) -> @activateMode count, mode: OPEN_IN_NEW_FG_TAB
+  activateModeToCopyLinkUrl: (count) -> @activateMode count, mode: COPY_LINK_URL
+  activateModeWithQueue: -> @activateMode 1, mode: OPEN_WITH_QUEUE
+  activateModeToOpenIncognito: (count) -> @activateMode count, mode: OPEN_INCOGNITO
+  activateModeToDownloadLink: (count) -> @activateMode count, mode: DOWNLOAD_LINK_URL
 
 class LinkHintsMode
   hintMarkerContainingDiv: null
@@ -158,7 +160,7 @@ class LinkHintsMode
     @stableSortCount = 0
     @hintMarkers = (@createMarkerFor desc for desc in hintDescriptors)
     @markerMatcher = new (if Settings.get "filterLinkHints" then FilterHints else AlphabetHints)
-    @markerMatcher.fillInMarkers @hintMarkers
+    @markerMatcher.fillInMarkers @hintMarkers, @.getNextZIndex.bind this
 
     @hintMode = new Mode
       name: "hint/#{@mode.name}"
@@ -196,6 +198,12 @@ class LinkHintsMode
       indicator = @mode.indicator + (if typedCharacters then ": \"#{typedCharacters}\"" else "") + "."
       @hintMode.setIndicator indicator
 
+  getNextZIndex: do ->
+    # This is the starting z-index value; it produces z-index values which are greater than all of the other
+    # z-index values used by Vimium.
+    baseZIndex = 2140000000
+    -> baseZIndex += 1
+
   #
   # Creates a link marker for the given link.
   #
@@ -207,6 +215,8 @@ class LinkHintsMode
         el.rect = localHintDescriptor.rect
         el.style.left = el.rect.left + "px"
         el.style.top = el.rect.top  + "px"
+        # Each hint marker is assigned a different z-index.
+        el.style.zIndex = @getNextZIndex()
         extend el,
           className: "vimiumReset internalVimiumHintMarker vimiumHintMarker"
           showLinkText: localHintDescriptor.showLinkText
@@ -274,7 +284,12 @@ class LinkHintsMode
       @tabCount = previousTabCount + (if event.shiftKey then -1 else 1)
       @updateVisibleMarkers @tabCount
 
+    else if event.keyCode == keyCodes.space and @markerMatcher.shouldRotateHints event
+      @tabCount = previousTabCount
+      HintCoordinator.sendMessage "rotateHints"
+
     else
+      @tabCount = previousTabCount if event.ctrlKey or event.metaKey or event.altKey
       return
 
     # We've handled the event, so suppress it and update the mode indicator.
@@ -299,7 +314,7 @@ class LinkHintsMode
   updateKeyState: ({hintKeystrokeQueue, linkTextKeystrokeQueue, tabCount}) ->
     extend @markerMatcher, {hintKeystrokeQueue, linkTextKeystrokeQueue}
 
-    {linksMatched, userMightOverType} = @markerMatcher.getMatchingHints @hintMarkers, tabCount
+    {linksMatched, userMightOverType} = @markerMatcher.getMatchingHints @hintMarkers, tabCount, this.getNextZIndex.bind this
     if linksMatched.length == 0
       @deactivateMode()
     else if linksMatched.length == 1
@@ -309,6 +324,50 @@ class LinkHintsMode
       @showMarker matched, @markerMatcher.hintKeystrokeQueue.length for matched in linksMatched
 
     @setIndicator()
+
+  # Rotate the hints' z-index values so that hidden hints become visible.
+  rotateHints: do ->
+    markerOverlapsStack = (marker, stack) ->
+      for otherMarker in stack
+        return true if Rect.rectsOverlap marker.markerRect, otherMarker.markerRect
+      false
+
+    ->
+      # Get local, visible hint markers.
+      localHintMarkers = @hintMarkers.filter (marker) ->
+        marker.isLocalMarker and marker.style.display != "none"
+
+      # Fill in the markers' rects, if necessary.
+      marker.markerRect ?= marker.getClientRects()[0] for marker in localHintMarkers
+
+      # Calculate the overlapping groups of hints.  We call each group a "stack".  This is O(n^2).
+      stacks = []
+      for marker in localHintMarkers
+        stackForThisMarker = null
+        stacks =
+          for stack in stacks
+            markerOverlapsThisStack = markerOverlapsStack marker, stack
+            if markerOverlapsThisStack and not stackForThisMarker?
+              # We've found an existing stack for this marker.
+              stack.push marker
+              stackForThisMarker = stack
+            else if markerOverlapsThisStack and stackForThisMarker?
+              # This marker overlaps a second (or subsequent) stack; merge that stack into stackForThisMarker
+              # and discard it.
+              stackForThisMarker.push stack...
+              continue # Discard this stack.
+            else
+              stack # Keep this stack.
+        stacks.push [marker] unless stackForThisMarker?
+
+      # Rotate the z-indexes within each stack.
+      for stack in stacks
+        if 1 < stack.length
+          zIndexes = (marker.style.zIndex for marker in stack)
+          zIndexes.push zIndexes[0]
+          marker.style.zIndex = zIndexes[index + 1] for marker, index in stack
+
+      null # Prevent Coffeescript from building an unnecessary array.
 
   # When only one hint remains, activate it in the appropriate way.  The current frame may or may not contain
   # the matched link, and may or may not have the focus.  The resulting four cases are accounted for here by
@@ -326,6 +385,8 @@ class LinkHintsMode
           else if localHintDescriptor.reason == "Scroll."
             # Tell the scroller that this is the activated element.
             handlerStack.bubbleEvent "DOMActivate", target: clickEl
+          else if localHintDescriptor.reason == "Open."
+            clickEl.open = !clickEl.open
           else if DomUtils.isSelectable clickEl
             window.focus()
             DomUtils.simulateSelect clickEl
@@ -339,8 +400,11 @@ class LinkHintsMode
 
     installKeyboardBlocker = (startKeyboardBlocker) ->
       if linkMatched.isLocalMarker
-        flashEl = DomUtils.addFlashRect linkMatched.rect
-        HintCoordinator.onExit.push -> DomUtils.removeElement flashEl
+        {top: viewportTop, left: viewportLeft} = DomUtils.getViewportTopLeft()
+        for rect in (Rect.copy rect for rect in clickEl.getClientRects())
+          extend rect, top: rect.top + viewportTop, left: rect.left + viewportLeft
+          flashEl = DomUtils.addFlashRect rect
+          do (flashEl) -> HintCoordinator.onExit.push -> DomUtils.removeElement flashEl
 
       if windowIsFocused()
         startKeyboardBlocker (isSuccess) -> HintCoordinator.sendMessage "exit", {isSuccess}
@@ -418,6 +482,9 @@ class AlphabetHints
     @hintKeystrokeQueue.push (if @useKeydown then keydownKeyChar else keyChar)
   popKeyChar: -> @hintKeystrokeQueue.pop()
 
+  # For alphabet hints, <Space> always rotates the hints, regardless of modifiers.
+  shouldRotateHints: -> true
+
 # Use numbers (usually) for hints, and also filter links by their text.
 class FilterHints
   constructor: ->
@@ -443,14 +510,14 @@ class FilterHints
     marker.innerHTML = spanWrap(marker.hintString +
         (if marker.showLinkText then ": " + linkText else ""))
 
-  fillInMarkers: (hintMarkers) ->
+  fillInMarkers: (hintMarkers, getNextZIndex) ->
     @renderMarker marker for marker in hintMarkers when marker.isLocalMarker
 
-    # We use @filterLinkHints() here (although we know that all of the hints will match) to fill in the hint
-    # strings.  This ensures that we always get hint strings in the same order.
-    @filterLinkHints hintMarkers
+    # We use @getMatchingHints() here (although we know that all of the hints will match) to get an order on
+    # the hints and highlight the first one.
+    @getMatchingHints hintMarkers, 0, getNextZIndex
 
-  getMatchingHints: (hintMarkers, tabCount = 0) ->
+  getMatchingHints: (hintMarkers, tabCount, getNextZIndex) ->
     # At this point, linkTextKeystrokeQueue and hintKeystrokeQueue have been updated to reflect the latest
     # input. Use them to filter the link hints accordingly.
     matchString = @hintKeystrokeQueue.join ""
@@ -463,6 +530,7 @@ class FilterHints
     @activeHintMarker?.classList?.remove "vimiumActiveHintMarker"
     @activeHintMarker = linksMatched[tabCount]
     @activeHintMarker?.classList?.add "vimiumActiveHintMarker"
+    @activeHintMarker?.style?.zIndex = getNextZIndex()
 
     linksMatched: linksMatched
     userMightOverType: @hintKeystrokeQueue.length == 0 and 0 < @linkTextKeystrokeQueue.length
@@ -538,6 +606,10 @@ class FilterHints
         # them as if their length was 100 (so, quite long).
         score / Math.log 1 + (linkMarker.linkText.length || 100)
 
+  # For filtered hints, we require a modifier (because <Space> on its own is a token separator).
+  shouldRotateHints: (event) ->
+    event.ctrlKey or event.altKey or event.metaKey
+
 #
 # Make each hint character a span, so that we can highlight the typed characters as you type them.
 #
@@ -602,11 +674,17 @@ LocalHints =
       isClickable = true
 
     # Check for jsaction event listeners on the element.
-    if element.hasAttribute "jsaction"
+    if not isClickable and element.hasAttribute "jsaction"
       jsactionRules = element.getAttribute("jsaction").split(";")
       for jsactionRule in jsactionRules
-        ruleSplit = jsactionRule.split ":"
-        isClickable ||= ruleSplit[0] == "click" or (ruleSplit.length == 1 and ruleSplit[0] != "none")
+        ruleSplit = jsactionRule.trim().split ":"
+        if 1 <= ruleSplit.length <= 2
+          [eventType, namespace, actionName ] =
+            if ruleSplit.length == 1
+              ["click", ruleSplit[0].trim().split(".")..., "_"]
+            else
+              [ruleSplit[0], ruleSplit[1].trim().split(".")..., "_"]
+          isClickable ||= eventType == "click" and namespace != "none" and actionName != "_"
 
     # Check for tagNames which are natively clickable.
     switch tagName
@@ -621,7 +699,8 @@ LocalHints =
       when "button", "select"
         isClickable ||= not element.disabled
       when "label"
-        isClickable ||= element.control? and (@getVisibleClickable element.control).length == 0
+        isClickable ||= element.control? and not element.control.disabled and
+                        (@getVisibleClickable element.control).length == 0
       when "body"
         isClickable ||=
           if element == document.body and not windowIsFocused() and
@@ -637,6 +716,9 @@ LocalHints =
         isClickable ||=
           if element.clientHeight < element.scrollHeight and Scroller.isScrollableElement element
             reason = "Scroll."
+      when "details"
+        isClickable = true
+        reason = "Open."
 
     # An element with a class name containing the text "button" might be clickable.  However, real clickables
     # are often wrapped in elements with such class names.  So, when we find clickables based only on their
@@ -733,9 +815,10 @@ LocalHints =
         nonOverlappingElements.push visibleElement unless visibleElement.secondClassCitizen
 
     # Position the rects within the window.
+    {top, left} = DomUtils.getViewportTopLeft()
     for hint in nonOverlappingElements
-      hint.rect.top += window.scrollY
-      hint.rect.left += window.scrollX
+      hint.rect.top += top
+      hint.rect.left += left
 
     if Settings.get "filterLinkHints"
       @withLabelMap (labelMap) =>
@@ -780,8 +863,12 @@ LocalHints =
     else if hint.reason?
       linkText = hint.reason
       showLinkText = true
+    else if 0 < element.textContent.length
+      linkText = element.textContent[...256]
+    else if element.hasAttribute "title"
+      linkText = element.getAttribute "title"
     else
-      linkText = element.textContent[...256] || element.innerHTML[...256]
+      linkText = element.innerHTML[...256]
 
     {linkText: linkText.trim(), showLinkText}
 

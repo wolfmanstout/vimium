@@ -13,6 +13,17 @@ DomUtils =
 
     (callback) -> if isReady then callback() else callbacks.push callback
 
+  documentComplete: do ->
+    [isComplete, callbacks] = [document.readyState == "complete", []]
+    unless isComplete
+      window.addEventListener "load", onLoad = ->
+        window.removeEventListener "load", onLoad
+        isComplete = true
+        callback() for callback in callbacks
+        callbacks = null
+
+    (callback) -> if isComplete then callback() else callbacks.push callback
+
   createElement: (tagName) ->
     element = document.createElement tagName
     if element instanceof HTMLElement
@@ -276,6 +287,13 @@ DomUtils =
   flashRect: (rect) ->
     flashEl = @addFlashRect rect
     setTimeout((-> DomUtils.removeElement flashEl), 400)
+
+  getViewportTopLeft: ->
+    if getComputedStyle(document.documentElement).position == "static"
+      top: window.scrollY, left: window.scrollX
+    else
+      rect = document.documentElement.getBoundingClientRect()
+      top: -rect.top, left: -rect.left
 
   suppressPropagation: (event) ->
     event.stopImmediatePropagation()

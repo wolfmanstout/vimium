@@ -71,6 +71,10 @@ class FindMode extends Mode
       name: "find"
       indicator: false
       exitOnClick: true
+      exitOnEscape: true
+      # This prevents further Vimium commands launching before the find-mode HUD receives the focus.
+      # E.g. "/" followed quickly by "i" should not leave us in insert mode.
+      suppressAllKeyboardEvents: true
 
     HUD.showFindMode this
 
@@ -179,7 +183,7 @@ class FindMode extends Mode
 
     if options.colorSelection
       setTimeout(
-        -> document.addEventListener("selectionchange", @restoreDefaultSelectionHighlight, true)
+        => document.addEventListener("selectionchange", @restoreDefaultSelectionHighlight, true)
       , 0)
 
     # We are either in normal mode ("n"), or find mode ("/").  We are not in insert mode.  Nevertheless, if a
