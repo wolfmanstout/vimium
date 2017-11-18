@@ -10,6 +10,7 @@ class InsertMode extends Mode
 
     handleKeyEvent = (event) =>
       return @continueBubbling unless @isActive event
+      return @passEventToPage if @insertModeLock is document.body
 
       # Check for a pass-next-key key.
       if KeyboardUtils.getKeyCharString(event) in Settings.get "passNextKeyKeys"
@@ -17,22 +18,20 @@ class InsertMode extends Mode
         return @suppressEvent
 
       return @passEventToPage unless event.type == 'keydown' and KeyboardUtils.isEscape event
-      DomUtils.suppressKeyupAfterEscape handlerStack
-      target = event.srcElement
+      target = event.target
       if target and DomUtils.isFocusable target
         # Remove the focus, so the user can't just get back into insert mode by typing in the same input box.
         target.blur()
       else if target?.shadowRoot and @insertModeLock
         # An editable element in a shadow DOM is focused; blur it.
         @insertModeLock.blur()
-      @exit event, event.srcElement
+      @exit event, event.target
       @suppressEvent
 
     defaults =
       name: "insert"
       indicator: if not @permanent and not Settings.get "hideHud"  then "Insert mode"
       keypress: handleKeyEvent
-      keyup: handleKeyEvent
       keydown: handleKeyEvent
 
     super extend defaults, options
@@ -65,7 +64,7 @@ class InsertMode extends Mode
           eventListeners = {}
           for type in [ "focus", "blur" ]
             eventListeners[type] = do (type) ->
-              (event) -> handlerStack.bubbleEvent type, event
+              forTrusted (event) -> handlerStack.bubbleEvent type, event
             shadowRoot.addEventListener type, eventListeners[type], true
 
           handlerStack.push
@@ -130,6 +129,7 @@ class PassNextKeyMode extends Mode
               @exit()
         @passEventToPage
 
-root = exports ? window
+root = exports ? (window.root ?= {})
 root.InsertMode = InsertMode
 root.PassNextKeyMode = PassNextKeyMode
+extend window, root unless exports?

@@ -1,4 +1,4 @@
-root = exports ? window
+root = exports ? (window.root ?= {})
 
 class HandlerStack
   constructor: ->
@@ -57,7 +57,10 @@ class HandlerStack
         if result == @passEventToPage
           return true
         else if result == @suppressPropagation
-          DomUtils.suppressPropagation event
+          if type == "keydown"
+            DomUtils.consumeKeyup event, null, true
+          else
+            DomUtils.suppressPropagation event
           return false
         else if result == @restartBubbling
           return @bubbleEvent type, event
@@ -65,7 +68,11 @@ class HandlerStack
           true # Do nothing, but continue bubbling.
         else
           # result is @suppressEvent or falsy.
-          DomUtils.suppressEvent event if @isChromeEvent event
+          if @isChromeEvent event
+            if type == "keydown"
+              DomUtils.consumeKeyup event
+            else
+              DomUtils.suppressEvent event
           return false
 
     # None of our handlers care about this event, so pass it to the page.
@@ -120,3 +127,4 @@ class HandlerStack
 
 root.HandlerStack = HandlerStack
 root.handlerStack = new HandlerStack()
+extend window, root unless exports?

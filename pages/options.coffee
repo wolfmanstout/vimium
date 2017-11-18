@@ -39,9 +39,14 @@ class Option
     bgSettings.clear @field
     @fetch()
 
+  @onSaveCallbacks: []
+  @onSave: (callback) ->
+    @onSaveCallbacks.push callback
+
   # Static method.
   @saveOptions: ->
     Option.all.map (option) -> option.save()
+    callback() for callback in @onSaveCallbacks
 
   # Abstract method; only implemented in sub-classes.
   # Populate the option's DOM element (@element) with the setting's current value.
@@ -93,8 +98,10 @@ class ExclusionRulesOption extends Option
       element
 
   populateElement: (rules) ->
-    for rule in rules
-      @appendRule rule
+    # For the case of restoring a backup, we first have to remove existing rules.
+    exclusionRules = $ "exclusionRules"
+    exclusionRules.deleteRow 1 while exclusionRules.rows[1]
+    @appendRule rule for rule in rules
 
   # Append a row for a new rule.  Return the newly-added element.
   appendRule: (rule) ->
@@ -193,6 +200,7 @@ Options =
   nextPatterns: NonEmptyTextOption
   previousPatterns: NonEmptyTextOption
   regexFindMode: CheckBoxOption
+  ignoreKeyboardLayout: CheckBoxOption
   scrollStepSize: NumberOption
   smoothScroll: CheckBoxOption
   grabBackFocus: CheckBoxOption
@@ -203,7 +211,7 @@ Options =
 initOptionsPage = ->
   onUpdated = ->
     $("saveOptions").removeAttribute "disabled"
-    $("saveOptions").innerHTML = "Save Changes"
+    $("saveOptions").textContent = "Save Changes"
 
   # Display either "linkHintNumbers" or "linkHintCharacters", depending upon "filterLinkHints".
   maintainLinkHintsView = ->
@@ -221,10 +229,10 @@ initOptionsPage = ->
   maintainAdvancedOptions = ->
     if bgSettings.get "optionsPage_showAdvancedOptions"
       $("advancedOptions").style.display = "table-row-group"
-      $("advancedOptionsButton").innerHTML = "Hide Advanced Options"
+      $("advancedOptionsButton").textContent = "Hide Advanced Options"
     else
       $("advancedOptions").style.display = "none"
-      $("advancedOptionsButton").innerHTML = "Show Advanced Options"
+      $("advancedOptionsButton").textContent = "Show Advanced Options"
   maintainAdvancedOptions()
 
   toggleAdvancedOptions = (event) ->
@@ -234,14 +242,13 @@ initOptionsPage = ->
     event.preventDefault()
 
   activateHelpDialog = ->
-    request = showUnboundCommands: true, showCommandNames: true, customTitle: "Command Listing"
-    chrome.runtime.sendMessage extend(request, handler: "getHelpDialogHtml"), (response) ->
-      HelpDialog.toggle {html: response}
+    HelpDialog.toggle showAllCommandDetails: true
 
   saveOptions = ->
+    $("linkHintCharacters").value = $("linkHintCharacters").value.toLowerCase()
     Option.saveOptions()
     $("saveOptions").disabled = true
-    $("saveOptions").innerHTML = "No Changes"
+    $("saveOptions").textContent = "Saved"
 
   $("saveOptions").addEventListener "click", saveOptions
   $("advancedOptionsButton").addEventListener "click", toggleAdvancedOptions
@@ -250,7 +257,7 @@ initOptionsPage = ->
 
   for element in document.getElementsByClassName "nonEmptyTextOption"
     element.className = element.className + " example info"
-    element.innerHTML = "Leave empty to reset this option."
+    element.textContent = "Leave empty to reset this option."
 
   window.onbeforeunload = -> "You have unsaved changes to options." unless $("saveOptions").disabled
 
@@ -266,7 +273,7 @@ initOptionsPage = ->
   maintainLinkHintsView()
 
 initPopupPage = ->
-  chrome.tabs.getSelected null, (tab) ->
+  chrome.tabs.query { active: true, currentWindow: true }, ([tab]) ->
     exclusions = null
     document.getElementById("optionsLink").setAttribute "href", chrome.runtime.getURL("pages/options.html")
 
@@ -287,12 +294,12 @@ initPopupPage = ->
     onUpdated = ->
       $("helpText").innerHTML = "Type <strong>Ctrl-Enter</strong> to save and close."
       $("saveOptions").removeAttribute "disabled"
-      $("saveOptions").innerHTML = "Save Changes"
+      $("saveOptions").textContent = "Save Changes"
       updateState() if exclusions
 
     saveOptions = ->
       Option.saveOptions()
-      $("saveOptions").innerHTML = "Saved"
+      $("saveOptions").textContent = "Saved"
       $("saveOptions").disabled = true
 
     $("saveOptions").addEventListener "click", saveOptions
@@ -311,6 +318,7 @@ initPopupPage = ->
 #
 # Initialization.
 document.addEventListener "DOMContentLoaded", ->
+  DomUtils.injectUserCss() # Manually inject custom user styles.
   xhr = new XMLHttpRequest()
   xhr.open 'GET', chrome.extension.getURL('pages/exclusions.html'), true
   xhr.onreadystatechange = ->
@@ -321,6 +329,52 @@ document.addEventListener "DOMContentLoaded", ->
         when "/pages/popup.html" then initPopupPage()
 
   xhr.send()
+
+#
+# Backup and restore. "?" is for the tests."
+DomUtils?.documentReady ->
+  restoreSettingsVersion = null
+
+  populateBackupLinkUrl = ->
+    backup = settingsVersion: bgSettings.get "settingsVersion"
+    for option in Option.all
+      backup[option.field] = option.readValueFromElement()
+    # Create the blob in the background page so it isn't garbage collected when the page closes in FF.
+    bgWin = chrome.extension.getBackgroundPage()
+    blob = new bgWin.Blob [ JSON.stringify backup, null, 2 ]
+    $("backupLink").href = bgWin.URL.createObjectURL blob
+
+  $("backupLink").addEventListener "mousedown", populateBackupLinkUrl, true
+
+  $("chooseFile").addEventListener "change", (event) ->
+    document.activeElement?.blur()
+    files = event.target.files
+    if files.length == 1
+      file = files[0]
+      reader = new FileReader
+      reader.readAsText file
+      reader.onload = (event) ->
+        try
+          backup = JSON.parse reader.result
+        catch
+          alert "Failed to parse Vimium backup."
+          return
+
+        restoreSettingsVersion = backup["settingsVersion"] if "settingsVersion" of backup
+        for option in Option.all
+          if option.field of backup
+            option.populateElement backup[option.field]
+            option.onUpdated()
+
+  Option.onSave ->
+    # If we're restoring a backup, then restore the backed up settingsVersion.
+    if restoreSettingsVersion?
+      bgSettings.set "settingsVersion", restoreSettingsVersion
+      restoreSettingsVersion = null
+    # Reset the restore-backup input.
+    $("chooseFile").value = ""
+    # We need to apply migrations in case we are restoring an old backup.
+    bgSettings.applyMigrations()
 
 # Exported for tests.
 root = exports ? window

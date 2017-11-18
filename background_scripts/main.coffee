@@ -5,6 +5,7 @@ root = exports ? window
 chrome.runtime.onInstalled.addListener ({ reason }) ->
   # See https://developer.chrome.com/extensions/runtime#event-onInstalled
   return if reason in [ "chrome_update", "shared_module_update" ]
+  return if Utils.isFirefox()
   manifest = chrome.runtime.getManifest()
   # Content scripts loaded on every page should be in the same group. We assume it is the first.
   contentScripts = manifest.content_scripts[0]
@@ -50,6 +51,10 @@ completers =
 completionHandlers =
   filter: (completer, request, port) ->
     completer.filter request, (response) ->
+      # NOTE(smblott): response contains `relevancyFunction` (function) properties which cause postMessage,
+      # below, to fail in Firefox. See #2576.  We cannot simply delete these methods, as they're needed
+      # elsewhere.  Converting the response to JSON and back is a quick and easy way to sanitize the object.
+      response = JSON.parse JSON.stringify response
       # We use try here because this may fail if the sender has already navigated away from the original page.
       # This can happen, for example, when posting completion suggestions from the SearchEngineCompleter
       # (which is done asynchronously).
@@ -80,56 +85,6 @@ onURLChange = (details) ->
 chrome.webNavigation.onHistoryStateUpdated.addListener onURLChange # history.pushState.
 chrome.webNavigation.onReferenceFragmentUpdated.addListener onURLChange # Hash changed.
 
-# Retrieves the help dialog HTML template from a file, and populates it with the latest keybindings.
-getHelpDialogHtml = ({showUnboundCommands, showCommandNames, customTitle}) ->
-  commandsToKey = {}
-  for own key of Commands.keyToCommandRegistry
-    command = Commands.keyToCommandRegistry[key].command
-    commandsToKey[command] = (commandsToKey[command] || []).concat(key)
-
-  replacementStrings =
-    version: Utils.getCurrentVersion()
-    title: customTitle || "Help"
-    tip: if showCommandNames then "Tip: click command names to yank them to the clipboard." else "&nbsp;"
-
-  for own group of Commands.commandGroups
-    replacementStrings[group] =
-        helpDialogHtmlForCommandGroup(group, commandsToKey, Commands.availableCommands,
-                                      showUnboundCommands, showCommandNames)
-
-  replacementStrings
-
-#
-# Generates HTML for a given set of commands. commandGroups are defined in commands.js
-#
-helpDialogHtmlForCommandGroup = (group, commandsToKey, availableCommands,
-    showUnboundCommands, showCommandNames) ->
-  html = []
-  for command in Commands.commandGroups[group]
-    keys = commandsToKey[command] || []
-    bindings = ("<span class='vimiumHelpDialogKey'>#{Utils.escapeHtml key}</span>" for key in keys).join ", "
-    if (showUnboundCommands || commandsToKey[command])
-      isAdvanced = Commands.advancedCommands.indexOf(command) >= 0
-      description = availableCommands[command].description
-      if keys.join(", ").length < 12
-        helpDialogHtmlForCommand html, isAdvanced, bindings, description, showCommandNames, command
-      else
-        # If the length of the bindings is too long, then we display the bindings on a separate row from the
-        # description.  This prevents the column alignment from becoming out of whack.
-        helpDialogHtmlForCommand html, isAdvanced, bindings, "", false, ""
-        helpDialogHtmlForCommand html, isAdvanced, "", description, showCommandNames, command
-  html.join("\n")
-
-helpDialogHtmlForCommand = (html, isAdvanced, bindings, description, showCommandNames, command) ->
-  html.push "<tr class='vimiumReset #{"advanced" if isAdvanced}'>"
-  if description
-    html.push "<td class='vimiumReset'>#{bindings}</td>"
-    html.push "<td class='vimiumReset'></td><td class='vimiumReset vimiumHelpDescription'>", description
-    html.push("(<span class='vimiumReset commandName'>#{command}</span>)") if showCommandNames
-  else
-    html.push "<td class='vimiumReset' colspan='3' style='text-align: left;'>", bindings
-  html.push("</td></tr>")
-
 # Cache "content_scripts/vimium.css" in chrome.storage.local for UI components.
 do ->
   req = new XMLHttpRequest()
@@ -149,10 +104,27 @@ TabOperations =
     tabConfig =
       url: Utils.convertToUrl request.url
       index: request.tab.index + 1
-      selected: true
+      active: true
       windowId: request.tab.windowId
-      openerTabId: request.tab.id
+    tabConfig.active = request.active if request.active?
+    # Firefox does not support "about:newtab" in chrome.tabs.create.
+    delete tabConfig["url"] if tabConfig["url"] == Settings.defaults.newTabUrl
+
+    # Firefox <57 throws an error when openerTabId is used (issue 1238314).
+    canUseOpenerTabId = not (Utils.isFirefox() and Utils.compareVersions(Utils.firefoxVersion(), "57") < 0)
+    tabConfig.openerTabId = request.tab.id if canUseOpenerTabId
+
     chrome.tabs.create tabConfig, callback
+
+  # Opens request.url in new window and switches to it.
+  openUrlInNewWindow: (request, callback = (->)) ->
+    winConfig =
+      url: Utils.convertToUrl request.url
+      active: true
+    winConfig.active = request.active if request.active?
+    # Firefox does not support "about:newtab" in chrome.tabs.create.
+    delete tabConfig["url"] if tabConfig["url"] == Settings.defaults.newTabUrl
+    chrome.windows.create winConfig, callback
 
 toggleMuteTab = do ->
   muteTab = (tab) -> chrome.tabs.update tab.id, {muted: !tab.mutedInfo.muted}
@@ -176,12 +148,12 @@ toggleMuteTab = do ->
 #
 selectSpecificTab = (request) ->
   chrome.tabs.get(request.id, (tab) ->
-    chrome.windows.update(tab.windowId, { focused: true })
-    chrome.tabs.update(request.id, { selected: true }))
+    chrome.windows?.update(tab.windowId, { focused: true })
+    chrome.tabs.update(request.id, { active: true }))
 
 moveTab = ({count, tab, registryEntry}) ->
   count = -count if registryEntry.command == "moveTabLeft"
-  chrome.tabs.getAllInWindow null, (tabs) ->
+  chrome.tabs.query { currentWindow: true }, (tabs) ->
     pinnedCount = (tabs.filter (tab) -> tab.pinned).length
     minIndex = if tab.pinned then 0 else pinnedCount
     maxIndex = (if tab.pinned then pinnedCount else tabs.length) - 1
@@ -195,15 +167,34 @@ mkRepeatCommand = (command) -> (request) ->
 # These are commands which are bound to keystrokes which must be handled by the background page. They are
 # mapped in commands.coffee.
 BackgroundCommands =
+  # Create a new tab.  Also, with:
+  #     map X createTab http://www.bbc.com/news
+  # create a new tab with the given URL.
   createTab: mkRepeatCommand (request, callback) ->
-    request.url ?= do ->
-      url = Settings.get "newTabUrl"
-      if url == "pages/blank.html"
-        # "pages/blank.html" does not work in incognito mode, so fall back to "chrome://newtab" instead.
-        if request.tab.incognito then "chrome://newtab" else chrome.runtime.getURL newTabUrl
+    request.urls ?=
+      if request.url
+        # If the request contains a URL, then use it.
+        [request.url]
       else
-        url
-    TabOperations.openUrlInNewTab request, (tab) -> callback extend request, {tab, tabId: tab.id}
+        # Otherwise, if we have a registryEntry containing URLs, then use them.
+        urlList = (opt for opt in request.registryEntry.optionList when Utils.isUrl opt)
+        if 0 < urlList.length
+          urlList
+        else
+          # Otherwise, just create a new tab.
+          newTabUrl = Settings.get "newTabUrl"
+          if newTabUrl == "pages/blank.html"
+            # "pages/blank.html" does not work in incognito mode, so fall back to "chrome://newtab" instead.
+            [if request.tab.incognito then "chrome://newtab" else chrome.runtime.getURL newTabUrl]
+          else
+            [newTabUrl]
+    urls = request.urls[..].reverse()
+    do openNextUrl = (request) ->
+      if 0 < urls.length
+        TabOperations.openUrlInNewTab (extend request, {url: urls.pop()}), (tab) ->
+          openNextUrl extend request, {tab, tabId: tab.id}
+      else
+        callback request
   duplicateTab: mkRepeatCommand (request, callback) ->
     chrome.tabs.duplicate request.tabId, (tab) -> callback extend request, {tab, tabId: tab.id}
   moveTabToNewWindow: ({count, tab}) ->
@@ -257,7 +248,7 @@ removeTabsRelative = (direction, {tab: activeTab}) ->
 # Selects a tab before or after the currently selected tab.
 # - direction: "next", "previous", "first" or "last".
 selectTab = (direction, {count, tab}) ->
-  chrome.tabs.getAllInWindow null, (tabs) ->
+  chrome.tabs.query { currentWindow: true }, (tabs) ->
     if 1 < tabs.length
       toSelect =
         switch direction
@@ -269,12 +260,11 @@ selectTab = (direction, {count, tab}) ->
             Math.min tabs.length - 1, count - 1
           when "last"
             Math.max 0, tabs.length - count
-      chrome.tabs.update tabs[toSelect].id, selected: true
+      chrome.tabs.update tabs[toSelect].id, active: true
 
-chrome.tabs.onUpdated.addListener (tabId, changeInfo, tab) ->
-  return unless changeInfo.status == "loading" # Only do this once per URL change.
+chrome.webNavigation.onCommitted.addListener ({tabId, frameId}) ->
   cssConf =
-    allFrames: true
+    frameId: frameId
     code: Settings.get("userDefinedLinkHintCss")
     runAt: "document_start"
   chrome.tabs.insertCSS tabId, cssConf, -> chrome.runtime.lastError
@@ -330,10 +320,11 @@ Frames =
 
   isEnabledForUrl: ({request, tabId, port}) ->
     urlForTab[tabId] = request.url if request.frameIsFocused
+    request.isFirefox = Utils.isFirefox() # Update the value for Utils.isFirefox in the frontend.
     enabledState = Exclusions.isEnabledForUrl request.url
 
     if request.frameIsFocused
-      chrome.browserAction.setIcon tabId: tabId, imageData: do ->
+      chrome.browserAction.setIcon? tabId: tabId, imageData: do ->
         enabledStateIcon =
           if not enabledState.isEnabledForUrl
             DISABLED_ICON
@@ -364,7 +355,7 @@ handleFrameFocused = ({tabId, frameId}) ->
 
 # Rotate through frames to the frame count places after frameId.
 cycleToFrame = (frames, frameId, count = 0) ->
-  # We can't always track which frame chrome has focussed, but here we learn that it's frameId; so add an
+  # We can't always track which frame chrome has focused, but here we learn that it's frameId; so add an
   # additional offset such that we do indeed start from frameId.
   count = (count + Math.max 0, frames.indexOf frameId) % frames.length
   [frames[count..]..., frames[0...count]...]
@@ -429,11 +420,11 @@ portHandlers =
 
 sendRequestHandlers =
   runBackgroundCommand: (request) -> BackgroundCommands[request.registryEntry.command] request
-  getHelpDialogHtml: getHelpDialogHtml
   # getCurrentTabUrl is used by the content scripts to get their full URL, because window.location cannot help
   # with Chrome-specific URLs like "view-source:http:..".
   getCurrentTabUrl: ({tab}) -> tab.url
   openUrlInNewTab: (request) -> TabOperations.openUrlInNewTab request
+  openUrlInNewWindow: (request) -> TabOperations.openUrlInNewWindow request
   openUrlInIncognito: (request) -> chrome.windows.create incognito: true, url: Utils.convertToUrl request.url
   openUrlInCurrentTab: TabOperations.openUrlInCurrentTab
   openOptionsPageInNewTab: (request) ->
@@ -458,7 +449,7 @@ chrome.tabs.onRemoved.addListener (tabId) ->
   delete cache[tabId] for cache in [frameIdsForTab, urlForTab, portsForTab, HintCoordinator.tabState]
   chrome.storage.local.get "findModeRawQueryListIncognito", (items) ->
     if items.findModeRawQueryListIncognito
-      chrome.windows.getAll null, (windows) ->
+      chrome.windows?.getAll null, (windows) ->
         for window in windows
           return if window.incognito
         # There are no remaining incognito-mode tabs, and findModeRawQueryListIncognito is set.
@@ -499,7 +490,7 @@ do showUpgradeMessage = ->
             Settings.set "previousVersion", currentVersion
             chrome.notifications.onClicked.addListener (id) ->
               if id == notificationId
-                chrome.tabs.getSelected null, (tab) ->
+                chrome.tabs.query { active: true, currentWindow: true }, ([tab]) ->
                   TabOperations.openUrlInNewTab {tab, tabId: tab.id, url: "https://github.com/philc/vimium#release-notes"}
       else
         # We need to wait for the user to accept the "notifications" permission.

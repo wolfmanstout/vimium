@@ -22,6 +22,9 @@ context "isUrl",
     assert.isTrue Utils.isUrl "illinois.state.museum"
     assert.isTrue Utils.isUrl "eqt5g4fuenphqinx.onion"
 
+    # Internal URLs.
+    assert.isTrue Utils.isUrl "moz-extension://c66906b4-3785-4a60-97bc-094a6366017e/pages/options.html"
+
   should "reject invalid URLs", ->
     assert.isFalse Utils.isUrl "a.x"
     assert.isFalse Utils.isUrl "www-domain-tld"
@@ -134,26 +137,6 @@ context "makeIdempotent",
 context "distinctCharacters",
   should "eliminate duplicate characters", ->
     assert.equal "abc", Utils.distinctCharacters "bbabaabbacabbbab"
-
-context "invokeCommandString",
-  setup ->
-    @beenCalled = false
-    window.singleComponentCommand = => @beenCalled = true
-    window.twoComponentCommand = command: window.singleComponentCommand
-
-  tearDown ->
-    delete window.singleComponentCommand
-    delete window.twoComponentCommand
-
-  should "invoke single-component commands", ->
-    assert.isFalse @beenCalled
-    Utils.invokeCommandString "singleComponentCommand"
-    assert.isTrue @beenCalled
-
-  should "invoke multi-component commands", ->
-    assert.isFalse @beenCalled
-    Utils.invokeCommandString "twoComponentCommand.command"
-    assert.isTrue @beenCalled
 
 context "escapeRegexSpecialCharacters",
   should "escape regexp special characters", ->

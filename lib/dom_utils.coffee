@@ -5,7 +5,7 @@ DomUtils =
   documentReady: do ->
     [isReady, callbacks] = [document.readyState != "loading", []]
     unless isReady
-      window.addEventListener "DOMContentLoaded", onDOMContentLoaded = ->
+      window.addEventListener "DOMContentLoaded", onDOMContentLoaded = forTrusted ->
         window.removeEventListener "DOMContentLoaded", onDOMContentLoaded
         isReady = true
         callback() for callback in callbacks
@@ -16,7 +16,7 @@ DomUtils =
   documentComplete: do ->
     [isComplete, callbacks] = [document.readyState == "complete", []]
     unless isComplete
-      window.addEventListener "load", onLoad = ->
+      window.addEventListener "load", onLoad = forTrusted ->
         window.removeEventListener "load", onLoad
         isComplete = true
         callback() for callback in callbacks
@@ -219,7 +219,7 @@ DomUtils =
       node = selection.anchorNode
       node and @isDOMDescendant element, node
     else
-      if selection.type == "Range" and selection.isCollapsed
+      if DomUtils.getSelectionType(selection) == "Range" and selection.isCollapsed
 	      # The selection is inside the Shadow DOM of a node. We can check the node it registers as being
 	      # before, since this represents the node whose Shadow DOM it's inside.
         containerNode = selection.anchorNode.childNodes[selection.anchorOffset]
@@ -249,7 +249,11 @@ DomUtils =
   simulateClick: (element, modifiers) ->
     eventSequence = ["mouseover", "mousedown", "mouseup", "click"]
     for event in eventSequence
-      @simulateMouseEvent event, element, modifiers
+      defaultActionShouldTrigger = @simulateMouseEvent event, element, modifiers
+      if event == "click" and defaultActionShouldTrigger and Utils.isFirefox()
+        # Firefox doesn't (currently) trigger the default action for modified keys.
+        DomUtils.simulateClickDefaultAction element, modifiers
+      defaultActionShouldTrigger # return the values returned by each @simulateMouseEvent call.
 
   simulateMouseEvent: do ->
     lastHoveredElement = undefined
@@ -272,6 +276,29 @@ DomUtils =
       # but Webkit will. Dispatching a click on an input box does not seem to focus it; we do that separately
       element.dispatchEvent(mouseEvent)
 
+  simulateClickDefaultAction: (element, modifiers = {}) ->
+    return unless element.tagName?.toLowerCase() == "a" and element.href?
+
+    {ctrlKey, shiftKey, metaKey, altKey} = modifiers
+
+    # Mac uses a different new tab modifier (meta vs. ctrl).
+    if KeyboardUtils.platform == "Mac"
+      newTabModifier = metaKey == true and ctrlKey == false
+    else
+      newTabModifier = metaKey == false and ctrlKey == true
+
+    if newTabModifier
+      # Open in new tab. Shift determines whether the tab is focused when created. Alt is ignored.
+      chrome.runtime.sendMessage {handler: "openUrlInNewTab", url: element.href, active:
+        shiftKey == true}
+    else if shiftKey == true and metaKey == false and ctrlKey == false and altKey == false
+      # Open in new window.
+      chrome.runtime.sendMessage {handler: "openUrlInNewWindow", url: element.href}
+    else if element.target == "_blank"
+      chrome.runtime.sendMessage {handler: "openUrlInNewTab", url: element.href, active: true}
+
+    return
+
   addFlashRect: (rect) ->
     flashEl = @createElement "div"
     flashEl.classList.add "vimiumReset"
@@ -289,11 +316,23 @@ DomUtils =
     setTimeout((-> DomUtils.removeElement flashEl), 400)
 
   getViewportTopLeft: ->
-    if getComputedStyle(document.documentElement).position == "static"
-      top: window.scrollY, left: window.scrollX
+    box = document.documentElement
+    style = getComputedStyle box
+    rect = box.getBoundingClientRect()
+    if style.position == "static" and not /content|paint|strict/.test(style.contain or "")
+      # The margin is included in the client rect, so we need to subtract it back out.
+      marginTop = parseInt style.marginTop
+      marginLeft = parseInt style.marginLeft
+      top: -rect.top + marginTop, left: -rect.left + marginLeft
     else
-      rect = document.documentElement.getBoundingClientRect()
-      top: -rect.top, left: -rect.left
+      if Utils.isFirefox()
+        # These are always 0 for documentElement on Firefox, so we derive them from CSS border.
+        clientTop = parseInt style.borderTopWidth
+        clientLeft = parseInt style.borderLeftWidth
+      else
+        {clientTop, clientLeft} = box
+      top: -rect.top - clientTop, left: -rect.left - clientLeft
+
 
   suppressPropagation: (event) ->
     event.stopImmediatePropagation()
@@ -302,20 +341,50 @@ DomUtils =
     event.preventDefault()
     @suppressPropagation(event)
 
-  # Suppress the next keyup event for Escape.
-  suppressKeyupAfterEscape: (handlerStack) ->
-    handlerStack.push
-      _name: "dom_utils/suppressKeyupAfterEscape"
-      keyup: (event) ->
-        return true unless KeyboardUtils.isEscape event
-        @remove()
-        false
+  consumeKeyup: do ->
+    handlerId = null
+
+    (event, callback = null, suppressPropagation) ->
+      unless event.repeat
+        handlerStack.remove handlerId if handlerId?
+        code = event.code
+        handlerId = handlerStack.push
+          _name: "dom_utils/consumeKeyup"
+          keyup: (event) ->
+            return handlerStack.continueBubbling unless event.code == code
+            @remove()
+            if suppressPropagation
+              DomUtils.suppressPropagation event
+            else
+              DomUtils.suppressEvent event
+            handlerStack.continueBubbling
+          # We cannot track keyup events if we lose the focus.
+          blur: (event) ->
+            @remove() if event.target == window
+            handlerStack.continueBubbling
+      callback?()
+      if suppressPropagation
+        DomUtils.suppressPropagation event
+        handlerStack.suppressPropagation
+      else
+        DomUtils.suppressEvent event
+        handlerStack.suppressEvent
+
+  # Polyfill for selection.type (which is not available in Firefox).
+  getSelectionType: (selection = document.getSelection()) ->
+    selection.type or do ->
+      if selection.rangeCount == 0
+        "None"
+      else if selection.isCollapsed
+        "Caret"
+      else
+        "Range"
 
   # Adapted from: http://roysharon.com/blog/37.
   # This finds the element containing the selection focus.
   getElementWithFocus: (selection, backwards) ->
     r = t = selection.getRangeAt 0
-    if selection.type == "Range"
+    if DomUtils.getSelectionType(selection) == "Range"
       r = t.cloneRange()
       r.collapse backwards
     t = r.startContainer
@@ -341,11 +410,20 @@ DomUtils =
   # If the element is rendered in a shadow DOM via a <content> element, the <content> element will be
   # returned, so the shadow DOM is traversed rather than passed over.
   getContainingElement: (element) ->
-    element.getDestinationInsertionPoints()[0] or element.parentElement
+    element.getDestinationInsertionPoints?()[0] or element.parentElement
 
   # This tests whether a window is too small to be useful.
   windowIsTooSmall: ->
     return window.innerWidth < 3 or window.innerHeight < 3
 
-root = exports ? window
+  # Inject user styles manually. This is only necessary for our chrome-extension:// pages and frames.
+  injectUserCss: ->
+    Settings.onLoaded ->
+      style = document.createElement "style"
+      style.type = "text/css"
+      style.textContent = Settings.get "userDefinedLinkHintCss"
+      document.head.appendChild style
+
+root = exports ? (window.root ?= {})
 root.DomUtils = DomUtils
+extend window, root unless exports?

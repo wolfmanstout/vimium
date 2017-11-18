@@ -30,7 +30,7 @@ Marks =
   saveMark: (markInfo) ->
     item = {}
     item[@getLocationKey markInfo.markName] = markInfo
-    chrome.storage.sync.set item
+    Settings.storage.set item
 
   # Goto a global mark.  We try to find the original tab.  If we can't find that, then we try to find another
   # tab with the original URL, and use that.  And if we can't find such an existing tab, then we create a new
@@ -39,7 +39,7 @@ Marks =
     chrome.storage.local.get "vimiumSecret", (items) =>
       vimiumSecret = items.vimiumSecret
       key = @getLocationKey req.markName
-      chrome.storage.sync.get key, (items) =>
+      Settings.storage.get key, (items) =>
         markInfo = items[key]
         if markInfo.vimiumSecret != vimiumSecret
           # This is a different Vimium instantiation, so markInfo.tabId is definitely out of date.
@@ -57,7 +57,7 @@ Marks =
 
   # Focus an existing tab and scroll to the given position within it.
   gotoPositionInTab: ({ tabId, scrollX, scrollY, markName }) ->
-    chrome.tabs.update tabId, {selected: true}, ->
+    chrome.tabs.update tabId, { active: true }, ->
       chrome.tabs.sendMessage tabId, {name: "setScrollPosition", scrollX, scrollY}
 
   # The tab we're trying to find no longer exists.  We either find another tab with a matching URL and use it,
@@ -82,7 +82,7 @@ Marks =
   # Given a list of tabs candidate tabs, pick one.  Prefer tabs in the current window and tabs with shorter
   # (matching) URLs.
   pickTab: (tabs, callback) ->
-    chrome.windows.getCurrent ({ id }) ->
+    tabPicker = ({ id }) ->
       # Prefer tabs in the current window, if there are any.
       tabsInWindow = tabs.filter (tab) -> tab.windowId == id
       tabs = tabsInWindow if 0 < tabsInWindow.length
@@ -92,6 +92,10 @@ Marks =
       # Prefer shorter URLs.
       tabs.sort (a,b) -> a.url.length - b.url.length
       callback tabs[0]
+    if chrome.windows?
+      chrome.windows.getCurrent tabPicker
+    else
+      tabPicker({id: undefined})
 
 root = exports ? window
 root.Marks = Marks

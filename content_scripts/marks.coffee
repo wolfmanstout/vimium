@@ -35,22 +35,24 @@ Marks =
       indicator: "Create mark..."
       exitOnEscape: true
       suppressAllKeyboardEvents: true
-      keypress: (event) =>
-        keyChar = String.fromCharCode event.charCode
-        @exit =>
-          if @isGlobalMark event, keyChar
-            # We record the current scroll position, but only if this is the top frame within the tab.
-            # Otherwise, we'll fetch the scroll position of the top frame from the background page later.
-            [ scrollX, scrollY ] = [ window.scrollX, window.scrollY ] if DomUtils.isTopFrame()
-            chrome.runtime.sendMessage
-              handler: 'createMark'
-              markName: keyChar
-              scrollX: scrollX
-              scrollY: scrollY
-            , => @showMessage "Created global mark", keyChar
-          else
-            localStorage[@getLocationKey keyChar] = @getMarkString()
-            @showMessage "Created local mark", keyChar
+      keydown: (event) =>
+        if KeyboardUtils.isPrintable event
+          keyChar = KeyboardUtils.getKeyChar event
+          @exit =>
+            if @isGlobalMark event, keyChar
+              # We record the current scroll position, but only if this is the top frame within the tab.
+              # Otherwise, we'll fetch the scroll position of the top frame from the background page later.
+              [ scrollX, scrollY ] = [ window.scrollX, window.scrollY ] if DomUtils.isTopFrame()
+              chrome.runtime.sendMessage
+                handler: 'createMark'
+                markName: keyChar
+                scrollX: scrollX
+                scrollY: scrollY
+              , => @showMessage "Created global mark", keyChar
+            else
+              localStorage[@getLocationKey keyChar] = @getMarkString()
+              @showMessage "Created local mark", keyChar
+          handlerStack.suppressEvent
 
   activateGotoMode: ->
     @mode = new Mode
@@ -58,27 +60,30 @@ Marks =
       indicator: "Go to mark..."
       exitOnEscape: true
       suppressAllKeyboardEvents: true
-      keypress: (event) =>
-        @exit =>
-          markName = String.fromCharCode event.charCode
-          if @isGlobalMark event, markName
-            # This key must match @getLocationKey() in the back end.
-            key = "vimiumGlobalMark|#{markName}"
-            chrome.storage.sync.get key, (items) ->
-              if key of items
-                chrome.runtime.sendMessage handler: 'gotoMark', markName: markName
-                HUD.showForDuration "Jumped to global mark '#{markName}'", 1000
-              else
-                HUD.showForDuration "Global mark not set '#{markName}'", 1000
-          else
-            markString = @localRegisters[markName] ? localStorage[@getLocationKey markName]
-            if markString?
-              @setPreviousPosition()
-              position = JSON.parse markString
-              window.scrollTo position.scrollX, position.scrollY
-              @showMessage "Jumped to local mark", markName
+      keydown: (event) =>
+        if KeyboardUtils.isPrintable event
+          @exit =>
+            keyChar = KeyboardUtils.getKeyChar event
+            if @isGlobalMark event, keyChar
+              # This key must match @getLocationKey() in the back end.
+              key = "vimiumGlobalMark|#{keyChar}"
+              Settings.storage.get key, (items) ->
+                if key of items
+                  chrome.runtime.sendMessage handler: 'gotoMark', markName: keyChar
+                  HUD.showForDuration "Jumped to global mark '#{keyChar}'", 1000
+                else
+                  HUD.showForDuration "Global mark not set '#{keyChar}'", 1000
             else
-              @showMessage "Local mark not set", markName
+              markString = @localRegisters[keyChar] ? localStorage[@getLocationKey keyChar]
+              if markString?
+                @setPreviousPosition()
+                position = JSON.parse markString
+                window.scrollTo position.scrollX, position.scrollY
+                @showMessage "Jumped to local mark", keyChar
+              else
+                @showMessage "Local mark not set", keyChar
+          handlerStack.suppressEvent
 
-root = exports ? window
+root = exports ? (window.root ?= {})
 root.Marks =  Marks
+extend window, root unless exports?

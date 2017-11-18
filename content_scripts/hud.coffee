@@ -35,7 +35,9 @@ HUD =
       @tween.fade 1.0, 150
 
   search: (data) ->
-    @findMode.findInPlace data.query
+    # NOTE(mrmr1993): On Firefox, window.find moves the window focus away from the HUD. We use postFindFocus
+    # to put it back, so the user can continue typing.
+    @findMode.findInPlace data.query, {"postFindFocus": @hudUI.iframeElement.contentWindow}
 
     # Show the number of matches in the HUD UI.
     matchCount = if FindMode.query.parsedQuery.length > 0 then FindMode.query.matchCount else 0
@@ -66,16 +68,16 @@ HUD =
 
     focusNode = DomUtils.getSelectionFocusElement()
     document.activeElement?.blur()
-    focusNode?.focus()
+    focusNode?.focus?()
 
     if exitEventIsEnter
-      handleEnterForFindMode()
+      FindMode.handleEnter()
       if FindMode.query.hasResults
         postExit = -> new PostFindMode
     else if exitEventIsEscape
-      # We don't want FindMode to handle the click events that handleEscapeForFindMode can generate, so we
+      # We don't want FindMode to handle the click events that FindMode.handleEscape can generate, so we
       # wait until the mode is closed before running it.
-      postExit = handleEscapeForFindMode
+      postExit = FindMode.handleEscape
 
     @findMode.exit()
     postExit?()
@@ -125,5 +127,6 @@ class Tween
       }
     """
 
-root = exports ? window
+root = exports ? (window.root ?= {})
 root.HUD = HUD
+extend window, root unless exports?

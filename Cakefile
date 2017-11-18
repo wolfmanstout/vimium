@@ -77,6 +77,9 @@ task "package", "Builds a zip file for submission to the Chrome store. The outpu
   spawn "rsync", rsyncOptions, false, true
   spawn "zip", ["-r", "dist/vimium-#{vimium_version}.zip", "dist/vimium"], false, true
 
+  spawn "zip", "-r -FS dist/vimium-ff-#{vimium_version}.zip background_scripts Cakefile content_scripts CONTRIBUTING.md CREDITS icons lib
+                manifest.json MIT-LICENSE.txt pages README.md -x *.coffee -x Cakefile -x CREDITS -x *.md".split(/\s+/), false, true
+
 # This builds a CRX that's distributable outside of the Chrome web store. Is this used by folks who fork
 # Vimium and want to distribute their fork?
 task "package-custom-crx", "build .crx file", ->
@@ -86,7 +89,11 @@ task "package-custom-crx", "build .crx file", ->
   # ugly hack to modify our manifest file on-the-fly
   origManifestText = fs.readFileSync "manifest.json"
   manifest = JSON.parse origManifestText
-  manifest.update_url = "http://philc.github.com/vimium/updates.xml"
+  # Update manifest fields that you would like to override here.  If
+  # distributing your CRX outside the Chrome webstore in a fork, please follow
+  # the instructions available at
+  # https://developer.chrome.com/extensions/autoupdate.
+  # manifest.update_url = "http://philc.github.com/vimium/updates.xml"
   fs.writeFileSync "manifest.json", JSON.stringify manifest
 
   pem = process.env.VIMIUM_CRX_PEM ? "vimium.pem"

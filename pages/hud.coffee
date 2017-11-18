@@ -12,25 +12,28 @@ setTextInInputElement = (inputElement, text) ->
   selection.removeAllRanges()
   selection.addRange range
 
+document.addEventListener "DOMContentLoaded", ->
+  DomUtils.injectUserCss() # Manually inject custom user styles.
+
 document.addEventListener "keydown", (event) ->
   inputElement = document.getElementById "hud-find-input"
   return unless inputElement? # Don't do anything if we're not in find mode.
 
-  if (event.keyCode in [keyCodes.backspace, keyCodes.deleteKey] and inputElement.textContent.length == 0) or
-     event.keyCode == keyCodes.enter or KeyboardUtils.isEscape event
+  if (KeyboardUtils.isBackspace(event) and inputElement.textContent.length == 0) or
+     event.key == "Enter" or KeyboardUtils.isEscape event
 
     UIComponentServer.postMessage
       name: "hideFindMode"
-      exitEventIsEnter: event.keyCode == keyCodes.enter
+      exitEventIsEnter: event.key == "Enter"
       exitEventIsEscape: KeyboardUtils.isEscape event
 
-  else if event.keyCode == keyCodes.upArrow
+  else if event.key == "ArrowUp"
     if rawQuery = FindModeHistory.getQuery findMode.historyIndex + 1
       findMode.historyIndex += 1
       findMode.partialQuery = findMode.rawQuery if findMode.historyIndex == 0
       setTextInInputElement inputElement, rawQuery
       findMode.executeQuery()
-  else if event.keyCode == keyCodes.downArrow
+  else if event.key == "ArrowDown"
     findMode.historyIndex = Math.max -1, findMode.historyIndex - 1
     rawQuery = if 0 <= findMode.historyIndex then FindModeHistory.getQuery findMode.historyIndex else findMode.partialQuery
     setTextInInputElement inputElement, rawQuery
@@ -58,7 +61,10 @@ handlers =
     hud.innerText = "/\u200A" # \u200A is a "hair space", to leave enough space before the caret/first char.
 
     inputElement = document.createElement "span"
-    inputElement.contentEditable = "plaintext-only"
+    try # NOTE(mrmr1993): Chrome supports non-standard "plaintext-only", which is what we *really* want.
+      inputElement.contentEditable = "plaintext-only"
+    catch # Fallback to standard-compliant version.
+      inputElement.contentEditable = "true"
     inputElement.id = "hud-find-input"
     hud.appendChild inputElement
 
@@ -69,6 +75,7 @@ handlers =
 
     countElement = document.createElement "span"
     countElement.id = "hud-match-count"
+    countElement.style.float = "right"
     hud.appendChild countElement
     inputElement.focus()
 

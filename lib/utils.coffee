@@ -1,4 +1,27 @@
+# Only pass events to the handler if they are marked as trusted by the browser.
+# This is kept in the global namespace for brevity and ease of use.
+window.forTrusted ?= (handler) -> (event) ->
+  if event?.isTrusted
+    handler.apply this, arguments
+  else
+    true
+
+browserInfo = browser?.runtime?.getBrowserInfo?()
+
 Utils =
+  isFirefox: do ->
+    # NOTE(mrmr1993): This test only works in the background page, this is overwritten by isEnabledForUrl for
+    # content scripts.
+    isFirefox = false
+    browserInfo?.then? (browserInfo) ->
+      isFirefox = browserInfo?.name == "Firefox"
+    -> isFirefox
+  firefoxVersion: do ->
+    # NOTE(mrmr1993): This only works in the background page.
+    ffVersion = undefined
+    browserInfo?.then? (browserInfo) ->
+      ffVersion = browserInfo?.version
+    -> ffVersion
   getCurrentVersion: ->
     chrome.runtime.getManifest().version
 
@@ -8,14 +31,6 @@ Utils =
 
   # Returns true whenever the current page is the extension's background page.
   isBackgroundPage: -> @isExtensionPage() and chrome.extension.getBackgroundPage?() == window
-
-  # Takes a dot-notation object string and calls the function that it points to with the correct value for
-  # 'this'.
-  invokeCommandString: (str, args...) ->
-    [names..., name] = str.split '.'
-    obj = window
-    obj = obj[component] for component in names
-    obj[name].apply obj, args
 
   # Escape all special characters, so RegExp will parse the string 'as is'.
   # Taken from http://stackoverflow.com/questions/3446170/escape-string-for-use-in-javascript-regex
@@ -41,7 +56,7 @@ Utils =
     url.startsWith "javascript:"
 
   hasFullUrlPrefix: do ->
-    urlPrefix = new RegExp "^[a-z]{3,}://."
+    urlPrefix = new RegExp "^[a-z][-+.a-z0-9]{2,}://."
     (url) -> urlPrefix.test url
 
   # Decode valid escape sequences in a URI.  This is intended to mimic the best-effort decoding
@@ -216,39 +231,6 @@ Utils =
       chrome.storage.onChanged.addListener (changes, area) =>
         setter changes[key].newValue if changes[key]?.newValue?
 
-# Utility for parsing and using the custom search-engine configuration.  We re-use the previous parse if the
-# search-engine configuration is unchanged.
-SearchEngines =
-  previousSearchEngines: null
-  searchEngines: null
-
-  refresh: (searchEngines) ->
-    unless @previousSearchEngines? and searchEngines == @previousSearchEngines
-      @previousSearchEngines = searchEngines
-      @searchEngines = new AsyncDataFetcher (callback) ->
-        engines = {}
-        for line in searchEngines.split "\n"
-          line = line.trim()
-          continue if /^[#"]/.test line
-          tokens = line.split /\s+/
-          continue unless 2 <= tokens.length
-          keyword = tokens[0].split(":")[0]
-          searchUrl = tokens[1]
-          description = tokens[2..].join(" ") || "search (#{keyword})"
-          continue unless Utils.hasFullUrlPrefix searchUrl
-          engines[keyword] = { keyword, searchUrl, description }
-
-        callback engines
-
-  # Use the parsed search-engine configuration, possibly asynchronously.
-  use: (callback) ->
-    @searchEngines.use callback
-
-  # Both set (refresh) the search-engine configuration and use it at the same time.
-  refreshAndUse: (searchEngines, callback) ->
-    @refresh searchEngines
-    @use callback
-
 # This creates a new function out of an existing function, where the new function takes fewer arguments. This
 # allows us to pass around functions instead of functions + a partial list of arguments.
 Function::curry = ->
@@ -345,9 +327,11 @@ class JobRunner
   onReady: (callback) ->
     @fetcher.use callback
 
-root = exports ? window
+root = exports ? (window.root ?= {})
 root.Utils = Utils
-root.SearchEngines = SearchEngines
 root.SimpleCache = SimpleCache
 root.AsyncDataFetcher = AsyncDataFetcher
 root.JobRunner = JobRunner
+unless exports?
+  root.extend = extend
+  extend window, root

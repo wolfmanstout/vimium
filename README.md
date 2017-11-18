@@ -1,7 +1,7 @@
 Vimium - The Hacker's Browser
 =============================
 
-[![Build Status](https://secure.travis-ci.org/philc/vimium.png?branch=master)](https://travis-ci.org/philc/vimium)
+[![Build Status](https://travis-ci.org/philc/vimium.svg?branch=master)](https://travis-ci.org/philc/vimium)
 
 Vimium is a Chrome extension that provides keyboard-based navigation and control of the web in the spirit of
 the Vim editor.
@@ -12,7 +12,7 @@ You can install the stable version of Vimium from the
 [Chrome Extensions Gallery](https://chrome.google.com/extensions/detail/dbepggeogbaibhgnhhndojpepiihcmeb).
 
 Please see
-[CONTRIBUTING.md](https://github.com/philc/vimium/blob/master/CONTRIBUTING.md#installing-from-source)
+[CONTRIBUTING.md](CONTRIBUTING.md#installing-from-source)
 for instructions on how you can install Vimium from source.
 
 The Options page can be reached via a link on the help dialog (type `?`) or via the button next to Vimium on
@@ -80,6 +80,7 @@ Manipulating tabs:
     x       close current tab
     X       restore closed tab (i.e. unwind the 'x' command)
     T       search through your open tabs
+    W       move current tab to new window
     <a-p>   pin/unpin current tab
 
 Using marks:
@@ -140,28 +141,80 @@ The following special keys are available for mapping:
 
 - `<c-*>`, `<a-*>`, `<m-*>` for ctrl, alt, and meta (command on Mac) respectively with any key. Replace `*`
   with the key of choice.
-- `<left>`, `<right>`, `<up>`, `<down>` for the arrow keys
-- `<space>` and `<backspace>` for the space and backspace keys
-- `<f1>` through `<f12>` for the function keys
+- `<left>`, `<right>`, `<up>`, `<down>` for the arrow keys.
+- `<f1>` through `<f12>` for the function keys.
+- `<space>` for the space key.
+- `<tab>`, `<enter>`, `<delete>`, `<backspace>`, `<insert>`, `<home>` and `<end>` for the corresponding non-printable keys (version 1.62 onwards).
 
 Shifts are automatically detected so, for example, `<c-&>` corresponds to ctrl+shift+7 on an English keyboard.
 
 More documentation
 ------------------
 Many of the more advanced or involved features are documented on
-[Vimium's github wiki](https://github.com/philc/vimium/wiki). Also
+[Vimium's GitHub wiki](https://github.com/philc/vimium/wiki). Also
 see the [FAQ](https://github.com/philc/vimium/wiki/FAQ).
 
 Contributing
 ------------
-Please see [CONTRIBUTING.md](https://github.com/philc/vimium/blob/master/CONTRIBUTING.md) for details.
+Please see [CONTRIBUTING.md](CONTRIBUTING.md) for details.
+
+Firefox Support
+---------------
+
+There is an *experimental* port of Vimium on Firefox [here](https://addons.mozilla.org/en-GB/firefox/addon/vimium-ff/).
+This is very much experimental: most features work, although some bugs and issues remain.
+
+PRs are welcome.
 
 Release Notes
 -------------
 
-Changes since the previous release (not yet in the Chrome Store version)
+In `master` (not yet released)
+
+- Backup and restore Vimium options (see the very bottom of the options page, below *Advanced Options*).
+- It is now possible to map `<tab>`, `<enter>`, `<delete>`, `<insert>`, `<home>` and `<end>`.
+
+1.61 (2017-10-27)
+
+- For *filtered hints*, you can now use alphabetical hint characters
+  instead of digits; use `<Shift>` for hint characters.
+- With `map R reload hard`, the reload command now asks Chrome to bypass its cache.
+- You can now map `<c-[>` to a command (in which case it will not be treated as `Escape`).
+- Various bug fixes, particularly for Firefox.
+- Minor versions:
+    - 1.61.1: Fix `map R reload hard`.
+
+1.60 (2017-09-14)
 
 - Features:
+    - There's a new (advanced) option to ignore the keyboard layout; this can
+      be helpful for users of non-Latin keyboards.
+    - Firefox support.  This is a work in progress; please report any issues
+      [here](https://github.com/philc/vimium/issues?q=is%3Aopen+sort%3Aupdated-desc);
+      see the [add
+      on](https://addons.mozilla.org/en-GB/firefox/addon/vimium-ff/).
+
+- Bug fixes:
+    - Fixed issue affecting hint placement when the display is zoomed.
+    - Fixed search completion for Firefox (released as 1.59.1, Firefox only).
+
+- Minor versions:
+    - 1.60.1: fix [#2642](https://github.com/philc/vimium/issues/2642).
+    - 1.60.2: revert previous fix for HiDPI screens.  This was breaking link-hint positioning for some users.
+    - 1.60.3: [fix](https://github.com/philc/vimium/pull/2649) link-hint positioning.
+    - 1.60.4: [fix](https://github.com/philc/vimium/pull/2602) hints opening in new tab (Firefox only).
+
+1.59 (2017-04-07)
+
+- Features:
+    - Some commands now work on PDF tabs (`J`, `K`, `o`, `b`, etc.). Scrolling and other content-related commands still do not work.
+
+1.58 (2017-03-08)
+
+- Features:
+    - The `createTab` command can now open specific URLs (e.g, `map X createTab http://www.bbc.com/news`).
+    - With pass keys defined for a site (such as GMail), you can now use Vimium's bindings again with, for example, `map \ passNextKey normal`;
+      this reactivates normal mode temporarily, but *without any pass keys*.
     - You can now map multi-modifier keys, for example: `<c-a-X>`.
     - Vimium can now do simple key mapping in some modes; see
       [here](https://github.com/philc/vimium/wiki/Tips-and-Tricks#key-mapping).
@@ -170,6 +223,10 @@ Changes since the previous release (not yet in the Chrome Store version)
     - For *Custom key mappings* on the options page, lines which end with `\` are now continued on the following line.
 - Process:
     - In order to provide faster bug fixes, we may in future push new releases without the noisy notification.
+
+- Post-release minor fixes:
+    - 1.58.1 (2017-03-09) fix bug in `LinkHints.activateModeWithQueue` (#2445).
+    - 1.58.2 (2017-03-19) fix key handling bug (#2453).
 
 1.57 (2016-10-01)
 
@@ -434,7 +491,7 @@ Changes since the previous release (not yet in the Chrome Store version)
 -  Arrow keys and function keys can now be mapped using &lt;left&gt;, &lt;right&gt;, &lt;up&gt;, &lt;down&gt;,
    &lt;f1&gt;, &lt;f2&gt;, etc. in the mappings interface.
 -  There is a new command `goUp` (mapped to `gu` by default) that will go up one level in the URL hierarchy.
-   For example: from http://vimium.github.com/foo/bar to http://vimium.github.com/foo. At the moment, `goUp`
+   For example: from https://vimium.github.io/foo/bar to https://vimium.github.io/foo. At the moment, `goUp`
 does not support command repetition.
 -  Bug fixes and optimizations.
 
