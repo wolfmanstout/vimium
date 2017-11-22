@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
   "name": "Modeless Keyboard Navigation",
-  "version": "1.61.1",
-  "description": "Based on Vimium by Phil Crosby and Ilya Sukhar (see https://github.com/philc/vimium). Unlike Vimium, the keyboard shortcuts can be used at any time, and the default bindings use modifier keys. Github: https://github.com/wolfmanstout/vimium",
+  "version": "1.61.1.1",
+  "description": "Modeless keyboard navigation based on Vimium.",
   "icons": {  "16": "icons/icon16.png",
               "48": "icons/icon48.png",
              "128": "icons/icon128.png" },
