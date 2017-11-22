@@ -1,5 +1,14 @@
-Vimium - The Hacker's Browser
-=============================
+# Modeless Keyboard Navigation
+
+Based on Vimium by Phil Crosby and Ilya Sukhar (see
+https://github.com/philc/vimium). Unlike Vimium, the keyboard shortcuts can be
+used at any time, and the default bindings use modifier keys (think Emacs, not
+Vim). Get for
+[Firefox](https://addons.mozilla.org/en-US/firefox/addon/modeless-keyboard-navigation/)
+or
+[Chrome](https://chrome.google.com/webstore/detail/modeless-keyboard-navigat/pmfgfecbppcbpjihojdhiphelpikpfcm).
+
+# Original Vimium README
 
 [![Build Status](https://travis-ci.org/philc/vimium.svg?branch=master)](https://travis-ci.org/philc/vimium)
 
