@@ -2,6 +2,7 @@
 Marks =
   previousPositionRegisters: [ "`", "'" ]
   localRegisters: {}
+  currentRegistryEntry: null
   mode: null
 
   exit: (continuation = null) ->
@@ -14,7 +15,7 @@ Marks =
     "vimiumMark|#{window.location.href.split('#')[0]}|#{keyChar}"
 
   getMarkString: ->
-    JSON.stringify scrollX: window.scrollX, scrollY: window.scrollY
+    JSON.stringify scrollX: window.scrollX, scrollY: window.scrollY, hash: window.location.hash
 
   setPreviousPosition: ->
     markString = @getMarkString()
@@ -26,10 +27,14 @@ Marks =
   # If <Shift> is depressed, then it's a global mark, otherwise it's a local mark.  This is consistent
   # vim's [A-Z] for global marks and [a-z] for local marks.  However, it also admits other non-Latin
   # characters.  The exceptions are "`" and "'", which are always considered local marks.
+  # The "swap" command option inverts global and local marks.
   isGlobalMark: (event, keyChar) ->
-    event.shiftKey and keyChar not in @previousPositionRegisters
+    shiftKey = event.shiftKey
+    shiftKey = not shiftKey if @currentRegistryEntry.options.swap
+    shiftKey and keyChar not in @previousPositionRegisters
 
-  activateCreateMode: ->
+  activateCreateMode: (count, {registryEntry}) ->
+    @currentRegistryEntry = registryEntry
     @mode = new Mode
       name: "create-mark"
       indicator: "Create mark..."
@@ -54,7 +59,8 @@ Marks =
               @showMessage "Created local mark", keyChar
           handlerStack.suppressEvent
 
-  activateGotoMode: ->
+  activateGotoMode: (count, {registryEntry}) ->
+    @currentRegistryEntry = registryEntry
     @mode = new Mode
       name: "goto-mark"
       indicator: "Go to mark..."
@@ -78,7 +84,10 @@ Marks =
               if markString?
                 @setPreviousPosition()
                 position = JSON.parse markString
-                window.scrollTo position.scrollX, position.scrollY
+                if position.hash and position.scrollX == 0 and position.scrollY == 0
+                  window.location.hash = position.hash
+                else
+                  window.scrollTo position.scrollX, position.scrollY
                 @showMessage "Jumped to local mark", keyChar
               else
                 @showMessage "Local mark not set", keyChar

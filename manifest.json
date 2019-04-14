@@ -1,7 +1,7 @@
 {
   "manifest_version": 2,
   "name": "Modeless Keyboard Navigation",
-  "version": "1.61.1.1",
+  "version": "1.64.5",
   "description": "Modeless keyboard navigation based on Vimium.",
   "icons": {  "16": "icons/icon16.png",
               "48": "icons/icon48.png",
@@ -13,7 +13,6 @@
       "lib/settings.js",
       "background_scripts/bg_utils.js",
       "background_scripts/commands.js",
-      "lib/clipboard.js",
       "background_scripts/exclusions.js",
       "background_scripts/completion_engines.js",
       "background_scripts/completion_search.js",
@@ -32,6 +31,7 @@
     "bookmarks",
     "history",
     "clipboardRead",
+    "clipboardWrite",
     "storage",
     "sessions",
     "notifications",
@@ -63,6 +63,13 @@
              "content_scripts/vimium_frontend.js"
             ],
       "css": ["content_scripts/vimium.css"],
+      "run_at": "document_start",
+      "all_frames": true,
+      "match_about_blank": true
+    },
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content_scripts/injected.js"],
       "run_at": "document_start",
       "all_frames": true,
       "match_about_blank": true

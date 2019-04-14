@@ -31,7 +31,7 @@ Keyboard Bindings
 -----------------
 
 Modifier keys are specified as `<c-x>`, `<m-x>`, and `<a-x>` for ctrl+x, meta+x, and alt+x
-respectively. See the next section for how to customize these bindings.
+respectively. For shift+x and ctrl-shift-x, just type `X` and `<c-X>`. See the next section for how to customize these bindings.
 
 Once you have Vimium installed, you can see this list of key bindings at any time by typing `?`.
 
@@ -178,10 +178,73 @@ PRs are welcome.
 Release Notes
 -------------
 
-In `master` (not yet released)
+1.64.5 (2019-02-16)
+
+- Fix error in Chrome Store distribution.
+
+1.64.4 (2019-02-16)
+
+- Fix [Vomnibar focus issue](https://github.com/philc/vimium/issues/3242).
+
+1.64.3 (2018-12-26)
+
+- When yanking email addresses with `yf`, Vimium now strips the leading `mailto:`.
+- For custom search engines, if you use `%S` (instead of `%s`), then your search terms are not URI encoded.
+- Bug fixes (including horizontal scrolling broken).
+
+1.64.2 (2018-12-16)
+
+- Better scrolling on new Reddit ~and GMail~.
+
+1.64 (2018-08-30)
+
+- Custom search engines can now be `javascript:` URLs (eg., search the current [site](https://github.com/philc/vimium/issues/2956#issuecomment-366509915)).
+- You can now using local marks to mark a hash/anchor.  This is particularly useful for marking labels on GMail.
+- For filtered hints, you can now start typing the link text before the hints have been generated.
+- On Twitter, expanded tweets are now scrollable.
+- Fix bug whereby `<Enter>` wasn't recognised in the Vomnibar in some circumstances.
+- Various minor bug fixes.
+
+1.63 (2018-02-16)
+
+- The `reload` command now accepts a count prefix; so `999r` reloads all tabs (in the current window).
+- Better detection of click listeners for link hints.
+- Display version number in page popup.
+- The Vomnibar is now loaded on demand (not preloaded).  This should fix some issues with the dev console.
+- The `\I` control (case sensitivity) for find mode has been removed.  Find mode uses smartcase.
+- Various bug fixes.
+- 1.63.1 (Firefox only):
+    - Fix [#2958](https://github.com/philc/vimium/issues/2958#issuecomment-366488659), link hints broken for `target="_blank"` links.
+- 1.63.2 (Firefox only):
+    - Fix [#2962](https://github.com/philc/vimium/issues/2962), find mode broken on Firefox Quantum.
+- 1.63.3:
+    - Fix [#2997](https://github.com/philc/vimium/issues/2997), Vimium's DOM injection breaks Google Pay site.
+
+1.62 (2017-12-09)
 
 - Backup and restore Vimium options (see the very bottom of the options page, below *Advanced Options*).
 - It is now possible to map `<tab>`, `<enter>`, `<delete>`, `<insert>`, `<home>` and `<end>`.
+- New command options for `createTab` to create new normal and incognito windows
+  ([examples](https://github.com/philc/vimium/wiki/Tips-and-Tricks#creating-tabs-with-urls-and-windows)).
+- Firefox only:
+    - Fix copy and paste commands.
+    - When upgrading, you will be asked to re-validate permissions.  The only
+      new permission is "copy and paste to/from clipboard" (the
+      `clipboardWrite` permission).  This is necessary to support copy/paste on
+      Firefox.
+- Various bug fixes.
+- 1.62.1: Swap global and local marks (1.62.1).
+  In a browser, some people find global marks more useful than local marks.
+  Example:
+
+```
+map X Marks.activateCreateMode swap
+map Y Marks.activateGotoMode swap
+```
+
+- Other minor versions:
+    - 1.62.2: Fixes [#2868](https://github.com/philc/vimium/issues/2868) (`createTab` with multiple URLs).
+    - 1.62.4: Fixes bug affecting the enabled state, and really fix `createTab`.
 
 1.61 (2017-10-27)
 

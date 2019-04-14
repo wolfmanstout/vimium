@@ -20,7 +20,7 @@ chrome.runtime.onInstalled.addListener ({ reason }) ->
           func tab.id, { file: file, allFrames: contentScripts.all_frames }, checkLastRuntimeError
 
 frameIdsForTab = {}
-portsForTab = {}
+root.portsForTab = {}
 root.urlForTab = {}
 
 # This is exported for use by "marks.coffee".
@@ -114,7 +114,8 @@ TabOperations =
     canUseOpenerTabId = not (Utils.isFirefox() and Utils.compareVersions(Utils.firefoxVersion(), "57") < 0)
     tabConfig.openerTabId = request.tab.id if canUseOpenerTabId
 
-    chrome.tabs.create tabConfig, callback
+    chrome.tabs.create tabConfig, (tab) ->
+      callback extend request, {tab, tabId: tab.id}
 
   # Opens request.url in new window and switches to it.
   openUrlInNewWindow: (request, callback = (->)) ->
@@ -123,13 +124,13 @@ TabOperations =
       active: true
     winConfig.active = request.active if request.active?
     # Firefox does not support "about:newtab" in chrome.tabs.create.
-    delete tabConfig["url"] if tabConfig["url"] == Settings.defaults.newTabUrl
+    delete winConfig["url"] if winConfig["url"] == Settings.defaults.newTabUrl
     chrome.windows.create winConfig, callback
 
 toggleMuteTab = do ->
   muteTab = (tab) -> chrome.tabs.update tab.id, {muted: !tab.mutedInfo.muted}
 
-  ({tab: currentTab, registryEntry}) ->
+  ({tab: currentTab, registryEntry, tabId, frameId}) ->
     if registryEntry.options.all? or registryEntry.options.other?
       # If there are any audible, unmuted tabs, then we mute them; otherwise we unmute any muted tabs.
       chrome.tabs.query {audible: true}, (tabs) ->
@@ -137,10 +138,16 @@ toggleMuteTab = do ->
           tabs = (tab for tab in tabs when tab.id != currentTab.id)
         audibleUnmutedTabs = (tab for tab in tabs when tab.audible and not tab.mutedInfo.muted)
         if 0 < audibleUnmutedTabs.length
+          chrome.tabs.sendMessage tabId, {frameId, name: "showMessage", message: "Muting #{audibleUnmutedTabs.length} tab(s)."}
           muteTab tab for tab in audibleUnmutedTabs
         else
+          chrome.tabs.sendMessage tabId, {frameId, name: "showMessage", message: "Unmuting all muted tabs."}
           muteTab tab for tab in tabs when tab.mutedInfo.muted
     else
+      if currentTab.mutedInfo.muted
+        chrome.tabs.sendMessage tabId, {frameId, name: "showMessage", message: "Unmuted tab."}
+      else
+        chrome.tabs.sendMessage tabId, {frameId, name: "showMessage", message: "Muted tab."}
       muteTab currentTab
 
 #
@@ -188,13 +195,18 @@ BackgroundCommands =
             [if request.tab.incognito then "chrome://newtab" else chrome.runtime.getURL newTabUrl]
           else
             [newTabUrl]
-    urls = request.urls[..].reverse()
-    do openNextUrl = (request) ->
-      if 0 < urls.length
-        TabOperations.openUrlInNewTab (extend request, {url: urls.pop()}), (tab) ->
-          openNextUrl extend request, {tab, tabId: tab.id}
-      else
-        callback request
+    if request.registryEntry.options.incognito or request.registryEntry.options.window
+      windowConfig =
+        url: request.urls
+        incognito: request.registryEntry.options.incognito ? false
+      chrome.windows.create windowConfig, -> callback request
+    else
+      urls = request.urls[..].reverse()
+      do openNextUrl = (request) ->
+        if 0 < urls.length
+          TabOperations.openUrlInNewTab (extend request, {url: urls.pop()}), openNextUrl
+        else
+          callback request
   duplicateTab: mkRepeatCommand (request, callback) ->
     chrome.tabs.duplicate request.tabId, (tab) -> callback extend request, {tab, tabId: tab.id}
   moveTabToNewWindow: ({count, tab}) ->
@@ -208,15 +220,9 @@ BackgroundCommands =
   previousTab: (request) -> selectTab "previous", request
   firstTab: (request) -> selectTab "first", request
   lastTab: (request) -> selectTab "last", request
-  removeTab: ({count, tab}) ->
-    chrome.tabs.query {currentWindow: true}, (tabs) ->
-      activeTabIndex = tab.index
-      startTabIndex = Math.max 0, Math.min activeTabIndex, tabs.length - count
-      chrome.tabs.remove (tab.id for tab in tabs[startTabIndex...startTabIndex + count])
+  removeTab: ({count, tab}) -> forCountTabs count, tab, (tab) -> chrome.tabs.remove tab.id
   restoreTab: mkRepeatCommand (request, callback) -> chrome.sessions.restore null, callback request
-  openCopiedUrlInCurrentTab: (request) -> TabOperations.openUrlInCurrentTab extend request, url: Clipboard.paste()
-  openCopiedUrlInNewTab: (request) -> @createTab extend request, url: Clipboard.paste()
-  togglePinTab: ({tab}) -> chrome.tabs.update tab.id, {pinned: !tab.pinned}
+  togglePinTab: ({count, tab}) -> forCountTabs count, tab, (tab) -> chrome.tabs.update tab.id, {pinned: !tab.pinned}
   toggleMuteTab: toggleMuteTab
   moveTabLeft: moveTab
   moveTabRight: moveTab
@@ -230,6 +236,21 @@ BackgroundCommands =
     tabIds = BgUtils.tabRecency.getTabsByRecency().filter (tabId) -> tabId != tab.id
     if 0 < tabIds.length
       selectSpecificTab id: tabIds[(count-1) % tabIds.length]
+  reload: ({count, tabId, registryEntry, tab: {windowId}})->
+    bypassCache = registryEntry.options.hard ? false
+    chrome.tabs.query {windowId}, (tabs) ->
+      position = do ->
+        for tab, index in tabs
+          return index if tab.id == tabId
+      tabs = [tabs[position...]..., tabs[...position]...]
+      count = Math.min count, tabs.length
+      chrome.tabs.reload tab.id, {bypassCache} for tab in tabs[...count]
+
+forCountTabs = (count, currentTab, callback) ->
+  chrome.tabs.query {currentWindow: true}, (tabs) ->
+    activeTabIndex = currentTab.index
+    startTabIndex = Math.max 0, Math.min activeTabIndex, tabs.length - count
+    callback tab for tab in tabs[startTabIndex...startTabIndex + count]
 
 # Remove tabs before, after, or either side of the currently active tab
 removeTabsRelative = (direction, {tab: activeTab}) ->
@@ -296,8 +317,9 @@ for icon in [ENABLED_ICON, DISABLED_ICON, PARTIAL_ICON]
 Frames =
   onConnect: (sender, port) ->
     [tabId, frameId] = [sender.tab.id, sender.frameId]
-    port.onDisconnect.addListener -> Frames.unregisterFrame {tabId, frameId}
+    port.onDisconnect.addListener -> Frames.unregisterFrame {tabId, frameId, port}
     port.postMessage handler: "registerFrameId", chromeFrameId: frameId
+    (portsForTab[tabId] ?= {})[frameId] = port
 
     # Return our onMessage handler for this port.
     (request, port) =>
@@ -305,13 +327,12 @@ Frames =
 
   registerFrame: ({tabId, frameId, port}) ->
     frameIdsForTab[tabId].push frameId unless frameId in frameIdsForTab[tabId] ?= []
-    (portsForTab[tabId] ?= {})[frameId] = port
 
-  unregisterFrame: ({tabId, frameId}) ->
-    # FrameId 0 is the top/main frame.  We never unregister that frame.  If the tab is closing, then we tidy
-    # up elsewhere.  If the tab is navigating to a new page, then a new top frame will be along soon.
-    # This mitigates against the unregister and register messages arriving out of order. See #2125.
-    if 0 < frameId
+  unregisterFrame: ({tabId, frameId, port}) ->
+    # Check that the port trying to unregister the frame hasn't already been replaced by a new frame
+    # registering. See #2125.
+    registeredPort = portsForTab[tabId]?[frameId]
+    if registeredPort == port or not registeredPort
       if tabId of frameIdsForTab
         frameIdsForTab[tabId] = (fId for fId in frameIdsForTab[tabId] when fId != frameId)
       if tabId of portsForTab
@@ -384,7 +405,8 @@ HintCoordinator =
 
   prepareToActivateMode: (tabId, originatingFrameId, {modeIndex, isVimiumHelpDialog}) ->
     @tabState[tabId] = {frameIds: frameIdsForTab[tabId][..], hintDescriptors: {}, originatingFrameId, modeIndex}
-    @tabState[tabId].ports = extend {}, portsForTab[tabId]
+    @tabState[tabId].ports = {}
+    frameIdsForTab[tabId].map (frameId) => @tabState[tabId].ports[frameId] = portsForTab[tabId][frameId]
     @sendMessage "getHintDescriptors", tabId, {modeIndex, isVimiumHelpDialog}
 
   # Receive hint descriptors from all frames and activate link-hints mode when we have them all.
@@ -423,7 +445,7 @@ sendRequestHandlers =
   # getCurrentTabUrl is used by the content scripts to get their full URL, because window.location cannot help
   # with Chrome-specific URLs like "view-source:http:..".
   getCurrentTabUrl: ({tab}) -> tab.url
-  openUrlInNewTab: (request) -> TabOperations.openUrlInNewTab request
+  openUrlInNewTab: mkRepeatCommand (request, callback) -> TabOperations.openUrlInNewTab request, callback
   openUrlInNewWindow: (request) -> TabOperations.openUrlInNewWindow request
   openUrlInIncognito: (request) -> chrome.windows.create incognito: true, url: Utils.convertToUrl request.url
   openUrlInCurrentTab: TabOperations.openUrlInCurrentTab
@@ -431,8 +453,6 @@ sendRequestHandlers =
     chrome.tabs.create url: chrome.runtime.getURL("pages/options.html"), index: request.tab.index + 1
   frameFocused: handleFrameFocused
   nextFrame: BackgroundCommands.nextFrame
-  copyToClipboard: Clipboard.copy.bind Clipboard
-  pasteFromClipboard: Clipboard.paste.bind Clipboard
   selectSpecificTab: selectSpecificTab
   createMark: Marks.create.bind(Marks)
   gotoMark: Marks.goto.bind(Marks)

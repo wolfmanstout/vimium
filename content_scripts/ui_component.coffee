@@ -27,7 +27,8 @@ class UIComponent
         seamless: "seamless"
       shadowWrapper = DomUtils.createElement "div"
       # PhantomJS doesn't support createShadowRoot, so guard against its non-existance.
-      @shadowDOM = shadowWrapper.createShadowRoot?() ? shadowWrapper
+      @shadowDOM = shadowWrapper.attachShadow?( mode: "open" ) ?
+        shadowWrapper.createShadowRoot?() ? shadowWrapper
       @shadowDOM.appendChild styleSheet
       @shadowDOM.appendChild @iframeElement
       @toggleIframeElementClasses "vimiumUIComponentVisible", "vimiumUIComponentHidden"
@@ -92,7 +93,7 @@ class UIComponent
                 handler: "sendMessageToFrames",
                 message: name: "focusFrame", frameId: @options.sourceFrameId, forceFocusThisFrame: true
             else
-              window.focus()
+              Utils.nextTick -> window.focus()
         @options = null
         @postMessage "hidden" # Inform the UI component that it is hidden.
 

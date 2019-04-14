@@ -181,7 +181,9 @@ class ExclusionRulesOnPopupOption extends ExclusionRulesOption
     if /^https?:\/\/./.test @url
       # The common use case is to disable Vimium at the domain level.
       # Generate "https?://www.example.com/*" from "http://www.example.com/path/to/page.html".
-      "https?:/" + @url.split("/",3)[1..].join("/") + "/*"
+      # Note: IPV6 host addresses will contain "[" and "]" (which must be escaped).
+      hostname = @url.split("/",3)[1..].join("/").replace("[", "\\[").replace "]", "\\]"
+      "https?:/" + hostname + "/*"
     else if /^[a-z]{3,}:\/\/./.test @url
       # Anything else which seems to be a URL.
       @url.split("/",3).join("/") + "/*"
@@ -206,7 +208,7 @@ Options =
   grabBackFocus: CheckBoxOption
   searchEngines: TextOption
   searchUrl: NonEmptyTextOption
-  userDefinedLinkHintCss: TextOption
+  userDefinedLinkHintCss: NonEmptyTextOption
 
 initOptionsPage = ->
   onUpdated = ->
@@ -277,6 +279,26 @@ initPopupPage = ->
     exclusions = null
     document.getElementById("optionsLink").setAttribute "href", chrome.runtime.getURL("pages/options.html")
 
+    tabPorts = chrome.extension.getBackgroundPage().portsForTab[tab.id]
+    unless tabPorts and Object.keys(tabPorts).length > 0
+      # The browser has disabled Vimium on this page. Place a message explaining this into the popup.
+      document.body.innerHTML = """
+        <div style="width: 400px; margin: 5px;">
+          <p style="margin-bottom: 5px;">
+            Vimium is not running on this page.
+          </p>
+          <p style="margin-bottom: 5px;">
+            Your browser does not run web extensions like Vimium on certain pages,
+            usually for security reasons.
+          </p>
+          <p>
+            Unless your browser's developers change their policy, then unfortunately it is not possible to make Vimium (or any other
+            web extension, for that matter) work on this page.
+          </p>
+        </div>
+      """
+      return
+
     # As the active URL, we choose the most recently registered URL from a frame in the tab, or the tab's own
     # URL.
     url = chrome.extension.getBackgroundPage().urlForTab[tab.id] || tab.url
@@ -315,6 +337,11 @@ initPopupPage = ->
     updateState()
     document.addEventListener "keyup", updateState
 
+  # Install version number.
+  manifest = chrome.runtime.getManifest()
+  $("versionNumber").textContent = manifest.version
+
+
 #
 # Initialization.
 document.addEventListener "DOMContentLoaded", ->
@@ -333,6 +360,9 @@ document.addEventListener "DOMContentLoaded", ->
 #
 # Backup and restore. "?" is for the tests."
 DomUtils?.documentReady ->
+  # Only initialize backup/restore on the options page (not the popup).
+  return unless location.pathname == "/pages/options.html"
+
   restoreSettingsVersion = null
 
   populateBackupLinkUrl = ->

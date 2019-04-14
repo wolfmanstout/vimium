@@ -104,7 +104,6 @@ class FindMode extends Mode
     # escape sequences. '\' is the escape character and needs to be escaped itself to be used as a normal
     # character. here we grep for the relevant escape sequences.
     @query.isRegex = Settings.get 'regexFindMode'
-    hasNoIgnoreCaseFlag = false
     @query.parsedQuery = @query.rawQuery.replace /(\\{1,2})([rRI]?)/g, (match, slashes, flag) =>
       return match if flag == "" or slashes.length != 1
       switch (flag)
@@ -112,12 +111,10 @@ class FindMode extends Mode
           @query.isRegex = true
         when "R"
           @query.isRegex = false
-        when "I"
-          hasNoIgnoreCaseFlag = true
       ""
 
-    # default to 'smartcase' mode, unless noIgnoreCase is explicitly specified
-    @query.ignoreCase = !hasNoIgnoreCaseFlag && !Utils.hasUpperCase(@query.parsedQuery)
+    # Implement smartcase.
+    @query.ignoreCase = not Utils.hasUpperCase(@query.parsedQuery)
 
     regexPattern = if @query.isRegex
       @query.parsedQuery
@@ -180,7 +177,7 @@ class FindMode extends Mode
       document.removeEventListener("selectionchange", @restoreDefaultSelectionHighlight, true)
 
     try
-      result = window.find(query, options.caseSensitive, options.backwards, true, false, true, false)
+      result = window.find(query, options.caseSensitive, options.backwards, true, false, false, false)
     catch # Failed searches throw on Firefox.
 
     # window.find focuses the |window| that it is called on. This gives us an opportunity to (re-)focus
@@ -221,6 +218,11 @@ class FindMode extends Mode
     FindMode.saveQuery()
 
   @findNext: (backwards) ->
+    # Bail out if we don't have any query text.
+    unless FindMode.query.rawQuery and 0 < FindMode.query.rawQuery.length
+      HUD.showForDuration "No query to find.", 1000
+      return
+
     Marks.setPreviousPosition()
     FindMode.query.hasResults = FindMode.execute null, {backwards}
 

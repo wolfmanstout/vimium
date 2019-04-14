@@ -113,19 +113,6 @@ installModes = ->
   new GrabBackFocus if isEnabledForUrl
   normalMode # Return the normalMode object (for the tests).
 
-initializeOnEnabledStateKnown = (isEnabledForUrl) ->
-  installModes() unless normalMode
-  if isEnabledForUrl
-    unless Utils.isFirefox() and document.documentElement.namespaceURI != "http://www.w3.org/1999/xhtml"
-      # We only initialize (and activate) the Vomnibar in the top frame.  Also, we do not initialize the
-      # Vomnibar until we know that Vimium is enabled.  Thereafter, there's no more initialization to do.
-      #
-      # NOTE(mrmr1993): In XML documents on Firefox, injecting HTML into the DOM breaks the rendering, so we
-      # lazy load the Vomnibar. This comes with the expected issues, but is better than breaking all XML
-      # documents.
-      DomUtils.documentComplete Vomnibar.init.bind Vomnibar if DomUtils.isTopFrame()
-    initializeOnEnabledStateKnown = ->
-
 #
 # Complete initialization work that should be done prior to DOMReady.
 #
@@ -144,8 +131,10 @@ initializePreDomReady = ->
     runInTopFrame: ({sourceFrameId, registryEntry}) ->
       NormalModeCommands[registryEntry.command] sourceFrameId, registryEntry if DomUtils.isTopFrame()
     linkHintsMessage: (request) -> HintCoordinator[request.messageType] request
+    showMessage: (request) -> HUD.showForDuration request.message, 2000
 
   chrome.runtime.onMessage.addListener (request, sender, sendResponse) ->
+    request.isTrusted = true
     # Some requests intended for the background page are delivered to the options page too; ignore them.
     unless request.handler and not request.name
       # Some request are handled elsewhere; ignore them too.
@@ -221,6 +210,7 @@ Frame =
     @port = chrome.runtime.connect name: "frames"
 
     @port.onMessage.addListener (request) =>
+      root.extend window, root unless extend? # See #2800 and #2831.
       (@listeners[request.handler] ? this[request.handler]) request
 
     # We disable the content scripts when we lose contact with the background page, or on unload.
@@ -242,31 +232,39 @@ Frame =
 setScrollPosition = ({ scrollX, scrollY }) ->
   DomUtils.documentReady ->
     if DomUtils.isTopFrame()
-      window.focus()
-      document.body.focus()
-      if 0 < scrollX or 0 < scrollY
-        Marks.setPreviousPosition()
-        window.scrollTo scrollX, scrollY
+      Utils.nextTick ->
+        window.focus()
+        document.body.focus()
+        if 0 < scrollX or 0 < scrollY
+          Marks.setPreviousPosition()
+          window.scrollTo scrollX, scrollY
 
-flashFrame = ->
-DomUtils.documentReady ->
-  # Create a shadow DOM wrapping the frame so the page's styles don't interfere with ours.
-  highlightedFrameElement = DomUtils.createElement "div"
-  # PhantomJS doesn't support createShadowRoot, so guard against its non-existance.
-  _shadowDOM = highlightedFrameElement.createShadowRoot?() ? highlightedFrameElement
+flashFrame = do ->
+  highlightedFrameElement = null
 
-  # Inject stylesheet.
-  _styleSheet = DomUtils.createElement "style"
-  _styleSheet.innerHTML = "@import url(\"#{chrome.runtime.getURL("content_scripts/vimium.css")}\");"
-  _shadowDOM.appendChild _styleSheet
+  ->
+    highlightedFrameElement ?= do ->
+      # Create a shadow DOM wrapping the frame so the page's styles don't interfere with ours.
+      highlightedFrameElement = DomUtils.createElement "div"
+      # PhantomJS doesn't support createShadowRoot, so guard against its non-existance.
+      # https://hacks.mozilla.org/2018/10/firefox-63-tricks-and-treats/ says
+      # Firefox 63 has enabled Shadow DOM v1 by default
+      _shadowDOM = highlightedFrameElement.attachShadow?( mode: "open" ) ?
+        highlightedFrameElement.createShadowRoot?() ? highlightedFrameElement
 
-  _frameEl = DomUtils.createElement "div"
-  _frameEl.className = "vimiumReset vimiumHighlightedFrame"
-  _shadowDOM.appendChild _frameEl
+      # Inject stylesheet.
+      _styleSheet = DomUtils.createElement "style"
+      _styleSheet.innerHTML = "@import url(\"#{chrome.runtime.getURL("content_scripts/vimium.css")}\");"
+      _shadowDOM.appendChild _styleSheet
 
-  flashFrame = ->
+      _frameEl = DomUtils.createElement "div"
+      _frameEl.className = "vimiumReset vimiumHighlightedFrame"
+      _shadowDOM.appendChild _frameEl
+
+      highlightedFrameElement
+
     document.documentElement.appendChild highlightedFrameElement
-    setTimeout (-> highlightedFrameElement.remove()), 200
+    Utils.setTimeout 200, -> highlightedFrameElement.remove()
 
 #
 # Called from the backend in order to change frame focus.
@@ -278,11 +276,12 @@ focusThisFrame = (request) ->
       # next frame instead.  This affects sites like Google Inbox, which have many tiny iframes. See #1317.
       chrome.runtime.sendMessage handler: "nextFrame"
       return
-  window.focus()
-  # On Firefox, window.focus doesn't always draw focus back from a child frame (bug 554039).
-  # We blur the active element if it is an iframe, which gives the window back focus as intended.
-  document.activeElement.blur() if document.activeElement.tagName.toLowerCase() == "iframe"
-  flashFrame() if request.highlight
+  Utils.nextTick ->
+    window.focus()
+    # On Firefox, window.focus doesn't always draw focus back from a child frame (bug 554039).
+    # We blur the active element if it is an iframe, which gives the window back focus as intended.
+    document.activeElement.blur() if document.activeElement.tagName.toLowerCase() == "iframe"
+    flashFrame() if request.highlight
 
 # Used by focusInput command.
 root.lastFocusedInput = do ->
@@ -303,7 +302,7 @@ checkIfEnabledForUrl = do ->
   Frame.addEventListener "isEnabledForUrl", (response) ->
     {isEnabledForUrl, passKeys, frameIsFocused, isFirefox} = response
     Utils.isFirefox = -> isFirefox
-    initializeOnEnabledStateKnown isEnabledForUrl
+    installModes() unless normalMode
     normalMode.setPassKeys passKeys
     # Hide the HUD if we're not enabled.
     HUD.hide true, false unless isEnabledForUrl
@@ -314,6 +313,7 @@ checkIfEnabledForUrl = do ->
 # When we're informed by the background page that a URL in this tab has changed, we check if we have the
 # correct enabled state (but only if this frame has the focus).
 checkEnabledAfterURLChange = forTrusted ->
+  Scroller.reset() # The URL changing feels like navigation to the user, so reset the scroller (see #3119).
   checkIfEnabledForUrl() if windowIsFocused()
 
 # If we are in the help dialog iframe, then HelpDialog is already defined with the necessary functions.

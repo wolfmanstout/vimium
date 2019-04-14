@@ -59,10 +59,7 @@ NormalModeCommands =
   scrollLeft: (count) -> Scroller.scrollBy "x", -1 * Settings.get("scrollStepSize") * count
   scrollRight: (count) -> Scroller.scrollBy "x", Settings.get("scrollStepSize") * count
 
-  # Page state.
-  reload: (count, options) ->
-    hard = options.registryEntry.options.hard ? false
-    window.location.reload(hard)
+  # Tab navigation: back, forward.
   goBack: (count) -> history.go(-count)
   goForward: (count) -> history.go(count)
 
@@ -91,9 +88,17 @@ NormalModeCommands =
 
   copyCurrentUrl: ->
     chrome.runtime.sendMessage { handler: "getCurrentTabUrl" }, (url) ->
-      chrome.runtime.sendMessage { handler: "copyToClipboard", data: url }
+      HUD.copyToClipboard url
       url = url[0..25] + "...." if 28 < url.length
       HUD.showForDuration("Yanked #{url}", 2000)
+
+  openCopiedUrlInNewTab: (count) ->
+    HUD.pasteFromClipboard (url) ->
+      chrome.runtime.sendMessage { handler: "openUrlInNewTab", url, count }
+
+  openCopiedUrlInCurrentTab: ->
+    HUD.pasteFromClipboard (url) ->
+      chrome.runtime.sendMessage { handler: "openUrlInCurrentTab", url }
 
   # Mode changes.
   enterInsertMode: ->

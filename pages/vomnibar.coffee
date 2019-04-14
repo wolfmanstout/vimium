@@ -57,6 +57,7 @@ class VomnibarUI
   # This ensures that the vomnibar is actually hidden before any new tab is created, and avoids flicker after
   # opening a link in a new tab then returning to the original tab (see #1485).
   hide: (@onHiddenCallback = null) ->
+    @input.blur()
     UIComponentServer.postMessage "hide"
     @reset()
 
@@ -103,6 +104,10 @@ class VomnibarUI
   # arrow keys and various other shortcuts, and this function hides the event-decoding complexity.
   actionFromKeyEvent: (event) ->
     key = KeyboardUtils.getKeyChar(event)
+    # Handle <Enter> on "keypress", and other events on "keydown"; this avoids interence with CJK translation
+    # (see #2915 and #2934).
+    return null if event.type == "keypress" and key != "enter"
+    return null if event.type == "keydown" and key == "enter"
     if (KeyboardUtils.isEscape(event))
       return "dismiss"
     else if (key == "up" ||
@@ -116,12 +121,14 @@ class VomnibarUI
       return "down"
     else if (event.key == "Enter")
       return "enter"
+    else if event.key == "Delete" and event.shiftKey and not event.ctrlKey and not event.altKey
+      return "remove"
     else if KeyboardUtils.isBackspace event
       return "delete"
 
     null
 
-  onKeydown: (event) =>
+  onKeyEvent: (event) =>
     @lastAction = action = @actionFromKeyEvent event
     return true unless action # pass through
 
@@ -161,10 +168,7 @@ class VomnibarUI
         # text than that which is included in the URL associated with the primary suggestion.  Therefore, to
         # avoid a race condition, we construct the query from the actual contents of the input (query).
         query = Utils.createSearchUrl query, @lastReponse.engine.searchUrl if isCustomSearchPrimarySuggestion
-        @hide ->
-          chrome.runtime.sendMessage
-            handler: if openInNewTab then "openUrlInNewTab" else "openUrlInCurrentTab"
-            url: query
+        @hide -> Vomnibar.getCompleter().launchUrl query, openInNewTab
       else
         completion = @completions[@selection]
         @hide -> completion.performAction openInNewTab
@@ -181,6 +185,9 @@ class VomnibarUI
         @update true
       else
         return true # Do not suppress event.
+    else if action == "remove" and 0 <= @selection
+      completion = @completions[@selection]
+      console.log completion
 
     # It seems like we have to manually suppress the event here and still return true.
     event.stopImmediatePropagation()
@@ -249,7 +256,8 @@ class VomnibarUI
 
     @input = @box.querySelector("input")
     @input.addEventListener "input", @onInput
-    @input.addEventListener "keydown", @onKeydown
+    @input.addEventListener "keydown", @onKeyEvent
+    @input.addEventListener "keypress", @onKeyEvent
     @completionList = @box.querySelector("ul")
     @completionList.style.display = ""
 
@@ -259,7 +267,7 @@ class VomnibarUI
       @input.focus()
       event.stopImmediatePropagation()
     # A click anywhere else hides the vomnibar.
-    document.body.addEventListener "click", => @hide()
+    document.addEventListener "click", => @hide()
 
 #
 # Sends requests to a Vomnibox completer on the background page.
@@ -319,15 +327,18 @@ class BackgroundCompleter
   # These are the actions we can perform when the user selects a result.
   completionActions:
     navigateToUrl: (url) -> (openInNewTab) ->
-      # If the URL is a bookmarklet (so, prefixed with "javascript:"), then we always open it in the current
-      # tab.
-      openInNewTab &&= not Utils.hasJavascriptPrefix url
-      chrome.runtime.sendMessage
-        handler: if openInNewTab then "openUrlInNewTab" else "openUrlInCurrentTab"
-        url: url
+      Vomnibar.getCompleter().launchUrl url, openInNewTab
 
     switchToTab: (tabId) -> ->
       chrome.runtime.sendMessage handler: "selectSpecificTab", id: tabId
+
+  launchUrl: (url, openInNewTab) ->
+    # If the URL is a bookmarklet (so, prefixed with "javascript:"), then we always open it in the current
+    # tab.
+    openInNewTab &&= not Utils.hasJavascriptPrefix url
+    chrome.runtime.sendMessage
+      handler: if openInNewTab then "openUrlInNewTab" else "openUrlInCurrentTab"
+      url: url
 
 UIComponentServer.registerHandler (event) ->
   switch event.data.name ? event.data

@@ -15,13 +15,19 @@ setTextInInputElement = (inputElement, text) ->
 document.addEventListener "DOMContentLoaded", ->
   DomUtils.injectUserCss() # Manually inject custom user styles.
 
-document.addEventListener "keydown", (event) ->
+onKeyEvent = (event) ->
+  # Handle <Enter> on "keypress", and other events on "keydown"; this avoids interence with CJK translation
+  # (see #2915 and #2934).
+  return null if event.type == "keypress" and event.key != "Enter"
+  return null if event.type == "keydown" and event.key == "Enter"
+
   inputElement = document.getElementById "hud-find-input"
   return unless inputElement? # Don't do anything if we're not in find mode.
 
   if (KeyboardUtils.isBackspace(event) and inputElement.textContent.length == 0) or
      event.key == "Enter" or KeyboardUtils.isEscape event
 
+    inputElement.blur()
     UIComponentServer.postMessage
       name: "hideFindMode"
       exitEventIsEnter: event.key == "Enter"
@@ -43,6 +49,9 @@ document.addEventListener "keydown", (event) ->
 
   DomUtils.suppressEvent event
   false
+
+document.addEventListener "keydown", onKeyEvent
+document.addEventListener "keypress", onKeyEvent
 
 handlers =
   show: (data) ->
@@ -94,6 +103,20 @@ handlers =
     else
       " (No matches)"
     countElement.textContent = if showMatchText then countText else ""
+
+  copyToClipboard: (data) ->
+    focusedElement = document.activeElement
+    Clipboard.copy data
+    focusedElement?.focus()
+    window.parent.focus()
+    UIComponentServer.postMessage {name: "unfocusIfFocused"}
+
+  pasteFromClipboard: ->
+    focusedElement = document.activeElement
+    data = Clipboard.paste()
+    focusedElement?.focus()
+    window.parent.focus()
+    UIComponentServer.postMessage {name: "pasteResponse", data}
 
 UIComponentServer.registerHandler ({data}) -> handlers[data.name ? data]? data
 FindModeHistory.init()

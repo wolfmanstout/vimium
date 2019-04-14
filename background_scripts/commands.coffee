@@ -20,7 +20,7 @@ Commands =
     unmapAll = false
     for line in configLines.reverse()
       tokens = line.split /\s+/
-      switch tokens[0]
+      switch tokens[0].toLowerCase()
         when "map"
           if 3 <= tokens.length and not unmapAll
             [_, key, command, optionList...] = tokens
@@ -32,7 +32,7 @@ Commands =
         when "unmap"
           if tokens.length == 2
             seen[tokens[1]] = true
-        when "unmapAll"
+        when "unmapall"
           unmapAll = true
         when "mapkey"
           if tokens.length == 3
@@ -261,12 +261,12 @@ commandDescriptions =
   scrollFullPageDown: ["Scroll a full page down"]
   scrollFullPageUp: ["Scroll a full page up"]
 
-  reload: ["Reload the page", { noRepeat: true }]
+  reload: ["Reload the page", { background: true }]
   toggleViewSource: ["View page source", { noRepeat: true }]
 
   copyCurrentUrl: ["Copy the current URL to the clipboard", { noRepeat: true }]
-  openCopiedUrlInCurrentTab: ["Open the clipboard's URL in the current tab", { background: true, noRepeat: true }]
-  openCopiedUrlInNewTab: ["Open the clipboard's URL in a new tab", { background: true, repeatLimit: 20 }]
+  openCopiedUrlInCurrentTab: ["Open the clipboard's URL in the current tab", { noRepeat: true }]
+  openCopiedUrlInNewTab: ["Open the clipboard's URL in a new tab", { repeatLimit: 20 }]
 
   enterInsertMode: ["Enter insert mode", { noRepeat: true }]
   passNextKey: ["Pass the next key to the page"]
@@ -311,7 +311,7 @@ commandDescriptions =
   restoreTab: ["Restore closed tab", { background: true, repeatLimit: 20 }]
 
   moveTabToNewWindow: ["Move tab to new window", { background: true }]
-  togglePinTab: ["Pin or unpin current tab", { background: true, noRepeat: true }]
+  togglePinTab: ["Pin or unpin current tab", { background: true }]
   toggleMuteTab: ["Mute or unmute current tab", { background: true, noRepeat: true }]
 
   closeTabsOnLeft: ["Close tabs on the left", {background: true, noRepeat: true}]

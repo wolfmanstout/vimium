@@ -18,6 +18,8 @@ KeyboardUtils =
   getKeyChar: (event) ->
     unless Settings.get "ignoreKeyboardLayout"
       key = event.key
+    else unless event.code
+      key = event.key ? "" # Fall back to event.key (see #3099).
     else if event.code[...6] == "Numpad"
       # We cannot correctly emulate the numpad, so fall back to event.key; see #2626.
       key = event.key
@@ -64,7 +66,11 @@ KeyboardUtils =
 
     (event) ->
       # <c-[> is mapped to Escape in Vim by default.
-      event.key == "Escape" or (useVimLikeEscape and @getKeyCharString(event) == "<c-[>")
+      # Escape with a keyCode 229 means that this event comes from IME, and should not be treated as a
+      # direct/normal Escape event.  IME will handle the event, not vimium.
+      # See https://lists.w3.org/Archives/Public/www-dom/2010JulSep/att-0182/keyCode-spec.html
+      (event.key == "Escape" and event.keyCode != 229) or
+        (useVimLikeEscape and @getKeyCharString(event) == "<c-[>")
 
   isBackspace: (event) ->
     event.key in ["Backspace", "Delete"]
