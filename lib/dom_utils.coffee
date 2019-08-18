@@ -136,16 +136,17 @@ DomUtils =
   # then null is returned instead of a rect.
   #
   cropRectToVisible: (rect) ->
-    boundedRect = Rect.create(
-      Math.max(rect.left, 0)
-      Math.max(rect.top, 0)
-      rect.right
-      rect.bottom
-    )
-    if boundedRect.top >= window.innerHeight - 4 or boundedRect.left >= window.innerWidth - 4
-      null
-    else
-      boundedRect
+    rect
+    # boundedRect = Rect.create(
+    # Math.max(rect.left, 0)
+    # Math.max(rect.top, 0)
+    # rect.right
+    # rect.bottom
+    # )
+    # if boundedRect.top >= window.innerHeight - 4 or boundedRect.left >= window.innerWidth - 4
+    #   null
+    # else
+    #   boundedRect
 
   #
   # Get the client rects for the <area> elements in a <map> based on the position of the <img> element using

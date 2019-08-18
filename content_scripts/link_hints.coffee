@@ -26,6 +26,9 @@ OPEN_WITH_QUEUE =
   name: "queue"
   indicator: "Open multiple links in new tabs"
   clickModifiers: metaKey: isMac, ctrlKey: not isMac
+SHOW_MINIMIZED =
+  name: "minimized"
+  indicator: "Show minimized"
 COPY_LINK_URL =
   name: "link"
   indicator: "Copy link URL to Clipboard"
@@ -47,7 +50,7 @@ DOWNLOAD_LINK_URL =
   indicator: "Download link URL"
   clickModifiers: altKey: true, ctrlKey: false, metaKey: false
 
-availableModes = [OPEN_IN_CURRENT_TAB, OPEN_IN_NEW_BG_TAB, OPEN_IN_NEW_FG_TAB, OPEN_WITH_QUEUE, COPY_LINK_URL,
+availableModes = [OPEN_IN_CURRENT_TAB, OPEN_IN_NEW_BG_TAB, OPEN_IN_NEW_FG_TAB, OPEN_WITH_QUEUE, SHOW_MINIMIZED, COPY_LINK_URL,
   OPEN_INCOGNITO, DOWNLOAD_LINK_URL]
 
 HintCoordinator =
@@ -106,6 +109,7 @@ HintCoordinator =
     DomUtils.documentReady => Settings.onLoaded =>
       @cacheAllKeydownEvents.exit() if @cacheAllKeydownEvents?.modeIsActive
       @onExit = [] unless frameId == originatingFrameId
+      if @linkHintsMode? then @linkHintsMode.deactivateMode()
       @linkHintsMode = new LinkHintsMode hintDescriptors, availableModes[modeIndex]
       # Replay keydown events which we missed (but for filtered hints only).
       @cacheAllKeydownEvents?.replayKeydownEvents() if Settings.get "filterLinkHints"
@@ -120,9 +124,8 @@ HintCoordinator =
   getLocalHintMarker: (hint) -> if hint.frameId == frameId then @localHints[hint.localIndex] else null
 
   exit: ({isSuccess}) ->
-    @linkHintsMode?.deactivateMode()
+    @linkHintsMode?.minimizeMode()
     @onExit.pop() isSuccess while 0 < @onExit.length
-    @linkHintsMode = @localHints = null
 
 LinkHints =
   activateMode: (count = 1, {mode}) ->
@@ -138,6 +141,7 @@ LinkHints =
   activateModeToOpenInNewForegroundTab: (count) -> @activateMode count, mode: OPEN_IN_NEW_FG_TAB
   activateModeToCopyLinkUrl: (count) -> @activateMode count, mode: COPY_LINK_URL
   activateModeWithQueue: -> @activateMode 1, mode: OPEN_WITH_QUEUE
+  activateModeMinimized: -> @activateMode 1, mode: SHOW_MINIMIZED
   activateModeToOpenIncognito: (count) -> @activateMode count, mode: OPEN_INCOGNITO
   activateModeToDownloadLink: (count) -> @activateMode count, mode: DOWNLOAD_LINK_URL
 
@@ -163,6 +167,7 @@ class LinkHintsMode
     # This count is used to rank equal-scoring hints when sorting, thereby making JavaScript's sort stable.
     @stableSortCount = 0
     @hintMarkers = (@createMarkerFor desc for desc in hintDescriptors)
+    @minimizedHintMarkers = (@createMarkerFor desc for desc in hintDescriptors)
     @markerMatcher = new (if Settings.get "filterLinkHints" then FilterHints else AlphabetHints)
     @markerMatcher.fillInMarkers @hintMarkers, @.getNextZIndex.bind this
 
@@ -187,6 +192,7 @@ class LinkHintsMode
       id: "vimiumHintMarkerContainer", className: "vimiumReset"
 
     @setIndicator()
+    if @mode == SHOW_MINIMIZED then @minimizeMode()
 
   setOpenLinkMode: (@mode, shouldPropagateToOtherFrames = true) ->
     if shouldPropagateToOtherFrames
@@ -304,7 +310,7 @@ class LinkHintsMode
 
     {linksMatched, userMightOverType} = @markerMatcher.getMatchingHints @hintMarkers, tabCount, this.getNextZIndex.bind this
     if linksMatched.length == 0
-      @deactivateMode()
+      @minimizeMode()
     else if linksMatched.length == 1
       @activateLink linksMatched[0], userMightOverType
     else
@@ -424,6 +430,11 @@ class LinkHintsMode
 
   deactivateMode: ->
     @removeHintMarkers()
+
+  minimizeMode: ->
+    @removeHintMarkers()
+    @hintMarkerContainingDiv = DomUtils.addElementList (marker for marker in @minimizedHintMarkers when marker.isLocalMarker),
+      id: "vimiumHintMarkerContainer", className: "vimiumReset"
     @hintMode?.exit()
 
   removeHintMarkers: ->
@@ -896,3 +907,7 @@ root.HintCoordinator = HintCoordinator
 # For tests:
 extend root, {LinkHintsMode, LocalHints, AlphabetHints, WaitForEnter}
 extend window, root unless exports?
+
+DomUtils.documentReady -> Settings.onLoaded ->
+  if frameId == 0
+    LinkHints.activateMode 1, mode: SHOW_MINIMIZED
