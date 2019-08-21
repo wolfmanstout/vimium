@@ -156,6 +156,7 @@ HintCoordinator =
   getLocalHintMarker: (hint) -> if hint.frameId == frameId then @localHints[hint.localIndex] else null
 
   exit: ({isSuccess}) ->
+    @linkHintsMode?.deactivateMode()
     @onExit.pop() isSuccess while 0 < @onExit.length
     LinkHints.activateMode 1, mode: SHOW_MINIMIZED
 
