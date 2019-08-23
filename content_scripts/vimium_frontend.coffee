@@ -225,7 +225,7 @@ Frame =
     @listeners = {}
     HintCoordinator.exit isSuccess: false
     handlerStack.reset()
-    isEnabledForUrl = false
+    root.isEnabledForUrl = window.isEnabledForUrl = isEnabledForUrl = false
     window.removeEventListener "focus", onFocus
     window.removeEventListener "hashchange", checkEnabledAfterURLChange
 
@@ -301,6 +301,7 @@ root.lastFocusedInput = do ->
 checkIfEnabledForUrl = do ->
   Frame.addEventListener "isEnabledForUrl", (response) ->
     {isEnabledForUrl, passKeys, frameIsFocused, isFirefox} = response
+    root.isEnabledForUrl = window.isEnabledForUrl = isEnabledForUrl
     Utils.isFirefox = -> isFirefox
     installModes() unless normalMode
     normalMode.setPassKeys passKeys
@@ -339,6 +340,7 @@ root.frameId = frameId
 root.Frame = Frame
 root.windowIsFocused = windowIsFocused
 root.bgLog = bgLog
+root.isEnabledForUrl = isEnabledForUrl
 # These are exported for normal mode and link-hints mode.
 extend root, {focusThisFrame}
 # These are exported only for the tests.

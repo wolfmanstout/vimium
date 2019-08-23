@@ -121,7 +121,9 @@ HintCoordinator =
 
   listenForMutations: ->
     @mutationObserver = new MutationObserver(
-      (mutationList, observer) -> HintCoordinator.refreshHints())
+      (mutationList, observer) ->
+        if isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g)
+          HintCoordinator.refreshHints())
     @mutationObserver.observe(document.documentElement, { childList: true, subtree: true })
 
   clearMutations: ->
@@ -158,7 +160,8 @@ HintCoordinator =
   exit: ({isSuccess}) ->
     @linkHintsMode?.deactivateMode()
     @onExit.pop() isSuccess while 0 < @onExit.length
-    LinkHints.activateMode 1, mode: SHOW_MINIMIZED
+    if frameId == 0 and isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g)
+      LinkHints.activateMode 1, mode: SHOW_MINIMIZED
 
 LinkHints =
   activateMode: (count = 1, {mode}) ->
@@ -346,7 +349,7 @@ class LinkHintsMode
 
     {linksMatched, userMightOverType} = @markerMatcher.getMatchingHints @hintMarkers, tabCount, this.getNextZIndex.bind this
     if linksMatched.length == 0
-      @minimizeMode()
+      @deactivateMode()
     else if linksMatched.length == 1
       @activateLink linksMatched[0], userMightOverType
     else
@@ -466,12 +469,14 @@ class LinkHintsMode
 
   deactivateMode: ->
     @removeHintMarkers()
+    @hintMode?.exit()
 
   minimizeMode: ->
     @removeHintMarkers()
+    @hintMode?.exit()
+    @hintMode = null
     @hintMarkerContainingDiv = DomUtils.addElementList (marker for marker in @minimizedHintMarkers when marker.isLocalMarker),
       id: "vimiumHintMarkerContainer", className: "vimiumReset"
-    @hintMode?.exit()
 
   removeHintMarkers: ->
     DomUtils.removeElement @hintMarkerContainingDiv if @hintMarkerContainingDiv
@@ -945,6 +950,6 @@ extend root, {LinkHintsMode, LocalHints, AlphabetHints, WaitForEnter}
 extend window, root unless exports?
 
 DomUtils.documentReady -> Settings.onLoaded ->
-  if frameId == 0
+  if frameId == 0 and isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g)
     LinkHints.activateMode 1, mode: SHOW_MINIMIZED
     HintCoordinator.listenForMutations()
