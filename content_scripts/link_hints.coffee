@@ -53,6 +53,9 @@ DOWNLOAD_LINK_URL =
 availableModes = [OPEN_IN_CURRENT_TAB, OPEN_IN_NEW_BG_TAB, OPEN_IN_NEW_FG_TAB, OPEN_WITH_QUEUE, SHOW_MINIMIZED, COPY_LINK_URL,
   OPEN_INCOGNITO, DOWNLOAD_LINK_URL]
 
+minimizedHintsAreEnabled = ->
+  return isEnabledForUrl?  # and not window.location.toString().match(/https:\/\/mail.google.com/g)
+
 HintCoordinator =
   onExit: []
   localHints: null
@@ -122,7 +125,7 @@ HintCoordinator =
   listenForMutations: ->
     @mutationObserver = new MutationObserver(
       (mutationList, observer) ->
-        if isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g)
+        if minimizedHintsAreEnabled()
           HintCoordinator.refreshHints())
     @mutationObserver.observe(document.documentElement, { childList: true, subtree: true })
 
@@ -160,7 +163,7 @@ HintCoordinator =
   exit: ({isSuccess}) ->
     @linkHintsMode?.deactivateMode()
     @onExit.pop() isSuccess while 0 < @onExit.length
-    if frameId == 0 and isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g)
+    if frameId == 0 and minimizedHintsAreEnabled()
       LinkHints.activateMode 1, mode: SHOW_MINIMIZED
 
 LinkHints =
@@ -950,6 +953,6 @@ extend root, {LinkHintsMode, LocalHints, AlphabetHints, WaitForEnter}
 extend window, root unless exports?
 
 DomUtils.documentReady -> Settings.onLoaded ->
-  if frameId == 0 and isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g)
+  if frameId == 0 and minimizedHintsAreEnabled()
     LinkHints.activateMode 1, mode: SHOW_MINIMIZED
     HintCoordinator.listenForMutations()
