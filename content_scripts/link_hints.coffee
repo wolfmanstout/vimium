@@ -185,7 +185,6 @@ LinkHints =
   activateModeToDownloadLink: (count) -> @activateMode count, mode: DOWNLOAD_LINK_URL
 
 class LinkHintsMode
-  hintMarkerContainingDiv: null
   # One of the enums listed at the top of this file.
   mode: undefined
   # Function that does the appropriate action on the selected link.
@@ -225,10 +224,7 @@ class LinkHintsMode
         (KeyboardUtils.isEscape(event) or KeyboardUtils.isBackspace event))
           HintCoordinator.sendMessage "exit", isSuccess: false
 
-    # Note(philc): Append these markers as top level children instead of as child nodes to the link itself,
-    # because some clickable elements cannot contain children, e.g. submit buttons.
-    @hintMarkerContainingDiv = DomUtils.addElementList (marker for marker in @hintMarkers when marker.isLocalMarker),
-      id: "vimiumHintMarkerContainer", className: "vimiumReset"
+    @addMarkers(@hintMarkers)
 
     @setIndicator()
     if @mode == SHOW_MINIMIZED then @minimizeMode()
@@ -261,14 +257,19 @@ class LinkHintsMode
     marker =
       if desc.frameId == frameId
         localHintDescriptor = HintCoordinator.getLocalHintMarker desc
-        el = DomUtils.createElement "div"
-        el.rect = localHintDescriptor.rect
-        el.style.left = el.rect.left + "px"
-        el.style.top = el.rect.top  + "px"
+        outer = DomUtils.createElement "div"
+        outer.style.position = "relative"
+        outer.style.width = "0"
+        outer.style.height = "0"
+        inner = DomUtils.createElement "div"
+        outer.appendChild(inner)
+        inner.style.position = "absolute";
         # Each hint marker is assigned a different z-index.
-        el.style.zIndex = @getNextZIndex()
-        extend el,
+        inner.style.zIndex = @getNextZIndex()
+        extend inner,
           className: "vimiumReset internalVimiumHintMarker vimiumHintMarker"
+        extend outer,
+          markedElement: localHintDescriptor.element
           showLinkText: localHintDescriptor.showLinkText
           localHintDescriptor: localHintDescriptor
       else
@@ -474,16 +475,23 @@ class LinkHintsMode
     @removeHintMarkers()
     @hintMode?.exit()
 
+  addMarkers: (markers) ->
+    for marker in markers
+      if marker.isLocalMarker then marker.markedElement.insertAdjacentElement("afterbegin", marker)
+
   minimizeMode: ->
     @removeHintMarkers()
     @hintMode?.exit()
     @hintMode = null
-    @hintMarkerContainingDiv = DomUtils.addElementList (marker for marker in @minimizedHintMarkers when marker.isLocalMarker),
-      id: "vimiumHintMarkerContainer", className: "vimiumReset"
-
+    @addMarkers(@minimizedHintMarkers)
+    
   removeHintMarkers: ->
-    DomUtils.removeElement @hintMarkerContainingDiv if @hintMarkerContainingDiv
-    @hintMarkerContainingDiv = null
+    if @hintMarkers?
+      for marker in @hintMarkers
+        if marker.isLocalMarker then marker.remove()
+    if @minimizedHintMarkers?
+      for marker in @minimizedHintMarkers
+        if marker.isLocalMarker then marker.remove()
 
 # Use characters for hints, and do not filter links by their text.
 class AlphabetHints
@@ -495,7 +503,7 @@ class AlphabetHints
     hintStrings = @hintStrings(hintMarkers.length)
     for marker, idx in hintMarkers
       marker.hintString = hintStrings[idx]
-      marker.innerHTML = spanWrap(marker.hintString.toUpperCase()) if marker.isLocalMarker
+      marker.firstChild.innerHTML = spanWrap(marker.hintString.toUpperCase()) if marker.isLocalMarker
 
   #
   # Returns a list of hint strings which will uniquely identify the given number of links. The hint strings
