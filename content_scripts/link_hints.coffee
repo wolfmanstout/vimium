@@ -257,7 +257,7 @@ class LinkHintsMode
     marker =
       if desc.frameId == frameId
         localHintDescriptor = HintCoordinator.getLocalHintMarker desc
-        outer = DomUtils.createElement "div"
+        outer = DomUtils.createElement "span"
         outer.style.position = "relative"
         outer.style.width = "0"
         outer.style.height = "0"
