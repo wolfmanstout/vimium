@@ -54,7 +54,7 @@ availableModes = [OPEN_IN_CURRENT_TAB, OPEN_IN_NEW_BG_TAB, OPEN_IN_NEW_FG_TAB, O
   OPEN_INCOGNITO, DOWNLOAD_LINK_URL]
 
 minimizedHintsAreEnabled = ->
-  return isEnabledForUrl?  # and not window.location.toString().match(/https:\/\/mail.google.com/g) and not window.location.toString().match(/https:\/\/critique.corp.google.com/g) and not window.location.toString().match(/https:\/\/docs.google.com/g)
+  return isEnabledForUrl? and not window.location.toString().match(/https:\/\/mail.google.com/g) and not window.location.toString().match(/https:\/\/critique.corp.google.com/g) and not window.location.toString().match(/https:\/\/docs.google.com/g)
 
 HintCoordinator =
   onExit: []
