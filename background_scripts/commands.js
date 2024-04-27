@@ -385,6 +385,7 @@ const Commands = {
 };
 
 const defaultKeyMappings = {
+  "<c-[>": "nextFrame",
   "<c-,>": "LinkHints.activateMode",
   "<c-.>": "LinkHints.activateModeToOpenInNewForegroundTab",
   "<a-f>": "LinkHints.activateModeWithQueue",
