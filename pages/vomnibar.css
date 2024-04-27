@@ -16,7 +16,7 @@
   top: 8px;
   left: 8px;
   /*margin: 0 0 0 -40%;*/
-  font-family: sans-serif;
+  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
 
   background: #F1F1F1;
   text-align: left;
@@ -28,7 +28,6 @@
 
 #vomnibar input {
   color: #000;
-  font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
   font-size: 20px;
   height: 34px;
   margin-bottom: 0;
@@ -85,10 +84,8 @@
 }
 
 #vomnibar li .vomnibarIcon {
-  background-position-y: center;
-  background-size: 16px;
-  background-repeat: no-repeat;
-  padding-left: 20px;
+  padding: 0 13px 0 6px;
+  vertical-align: bottom;
 }
 
 #vomnibar li .vomnibarSource {
@@ -120,7 +117,6 @@
 #vomnibar li em, #vomnibar li .vomnibarTitle {
   color: black;
   margin-left: 4px;
-  font-weight: normal;
 }
 #vomnibar li em { font-style: italic; }
 #vomnibar li em .vomnibarMatch, #vomnibar li .vomnibarTitle .vomnibarMatch {
@@ -129,7 +125,6 @@
 
 #vomnibar li.vomnibarSelected {
   background-color: #BBCEE9;
-  font-weight: normal;
 }
 
 #vomnibarInput::selection {
@@ -149,4 +144,59 @@
 
 .vomnibarNoInsertText {
   visibility: hidden;
+}
+
+/* Dark Vomnibar */
+
+@media (prefers-color-scheme: dark) {
+  #vomnibar {
+    border: 1px solid rgba(0, 0, 0, 0.7);
+    border-radius: 6px;
+  }
+
+  #vomnibar .vomnibarSearchArea, #vomnibar {
+    background-color: #35363a;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  #vomnibar input {
+    background-color: #202124;
+    color: white;
+    border: none;
+  }
+
+  #vomnibar ul {
+    background-color: #202124;
+  }
+
+  #vomnibar li {
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  #vomnibar li.vomnibarSelected {
+    background-color: #37383a;
+  }
+
+  #vomnibar li .vomnibarUrl {
+    white-space: nowrap;
+    color: #5ca1f7;
+  }
+
+  #vomnibar li em,
+  #vomnibar li .vomnibarTitle {
+    color: white;
+  }
+
+  #vomnibar li .vomnibarSource {
+    color: #9aa0a6;
+  }
+
+  #vomnibar li .vomnibarMatch {
+    color: white;
+  }
+
+  #vomnibar li em .vomnibarMatch,
+  #vomnibar li .vomnibarTitle .vomnibarMatch {
+    color: white;
+  }
 }
