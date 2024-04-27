@@ -385,83 +385,11 @@ const Commands = {
 };
 
 const defaultKeyMappings = {
-  // Navigating the current page
-  "j": "scrollDown",
-  "k": "scrollUp",
-  "h": "scrollLeft",
-  "l": "scrollRight",
-  "gg": "scrollToTop",
-  "G": "scrollToBottom",
-  "zH": "scrollToLeft",
-  "zL": "scrollToRight",
-  "<c-e>": "scrollDown",
-  "<c-y>": "scrollUp",
-  "d": "scrollPageDown",
-  "u": "scrollPageUp",
-  "r": "reload",
-  "yy": "copyCurrentUrl",
-  "p": "openCopiedUrlInCurrentTab",
-  "P": "openCopiedUrlInNewTab",
-  "gi": "focusInput",
-  "[[": "goPrevious",
-  "]]": "goNext",
-  "gf": "nextFrame",
-  "gF": "mainFrame",
-  "gu": "goUp",
-  "gU": "goToRoot",
-  "i": "enterInsertMode",
-  "v": "enterVisualMode",
-  "V": "enterVisualLineMode",
-
-  // Link hints
-  "f": "LinkHints.activateMode",
-  "F": "LinkHints.activateModeToOpenInNewTab",
+  "<c-,>": "LinkHints.activateMode",
+  "<c-.>": "LinkHints.activateModeToOpenInNewForegroundTab",
   "<a-f>": "LinkHints.activateModeWithQueue",
-  "yf": "LinkHints.activateModeToCopyLinkUrl",
-
-  // Using find
-  "/": "enterFindMode",
-  "n": "performFind",
-  "N": "performBackwardsFind",
-
-  // Vomnibar
-  "o": "Vomnibar.activate",
-  "O": "Vomnibar.activateInNewTab",
-  "T": "Vomnibar.activateTabSelection",
-  "b": "Vomnibar.activateBookmarks",
-  "B": "Vomnibar.activateBookmarksInNewTab",
-  "ge": "Vomnibar.activateEditUrl",
-  "gE": "Vomnibar.activateEditUrlInNewTab",
-
-  // Navigating history
-  "H": "goBack",
-  "L": "goForward",
-
-  // Manipulating tabs
-  "K": "nextTab",
-  "J": "previousTab",
-  "gt": "nextTab",
-  "gT": "previousTab",
-  "^": "visitPreviousTab",
-  "<<": "moveTabLeft",
-  ">>": "moveTabRight",
-  "g0": "firstTab",
-  "g$": "lastTab",
-  "W": "moveTabToNewWindow",
-  "t": "createTab",
-  "yt": "duplicateTab",
-  "x": "removeTab",
-  "X": "restoreTab",
-  "<a-p>": "togglePinTab",
-  "<a-m>": "toggleMuteTab",
-
-  // Marks
-  "m": "Marks.activateCreateMode",
-  "`": "Marks.activateGotoMode",
-
-  // Misc
-  "?": "showHelp",
-  "gs": "toggleViewSource",
+  "<c-;>": "Vomnibar.activateBookmarks",
+  "<c-'>": "Vomnibar.activateBookmarksInNewTab",
 };
 
 // This is a mapping of: commandIdentifier => [description, options].

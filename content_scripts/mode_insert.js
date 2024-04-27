@@ -74,13 +74,7 @@ class InsertMode extends Mode {
   }
 
   isActive(event) {
-    if (event === InsertMode.suppressedEvent) {
-      return false;
-    }
-    if (this.global) {
-      return true;
-    }
-    return DomUtils.isFocusable(this.getActiveElement());
+    return false;
   }
 
   getActiveElement() {

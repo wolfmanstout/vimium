@@ -94,9 +94,7 @@ class KeyHandlerMode extends Mode {
 
   // This tests whether keyChar is a digit (and accounts for pass keys).
   isCountKey(keyChar) {
-    return keyChar &&
-      ((this.countPrefix > 0 ? "0" : "1") <= keyChar && keyChar <= "9") &&
-      !this.isPassKey(keyChar);
+    return false;
   }
 
   // Keystrokes are *never* considered pass keys if the user has begun entering a command. So, for
